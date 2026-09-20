@@ -7,7 +7,7 @@
     <groupId>com.github.esrrhs</groupId>
     <artifactId>paodekuai-ai</artifactId>
     <packaging>jar</packaging>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
 
     <name>paodekuai-ai</name>
     <description>High-performance PaoDeKuai (Run Fast) Poker AI using PIMC and Max^N MCTS.</description>

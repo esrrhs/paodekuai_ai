@@ -19,13 +19,13 @@
 <dependency>
     <groupId>com.github.esrrhs</groupId>
     <artifactId>paodekuai-ai</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
 </dependency>
 ```
 
 ### Gradle
 ```groovy
-implementation 'com.github.esrrhs:paodekuai-ai:1.0.0'
+implementation 'com.github.esrrhs:paodekuai-ai:1.0.1'
 ```
 
 ---
