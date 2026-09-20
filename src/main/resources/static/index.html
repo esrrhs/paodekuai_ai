@@ -27,32 +27,32 @@
                 <div class="poker-table">
                     <!-- 上方两名 AI 玩家 -->
                     <div class="opponents-row">
-                        <!-- AI 玩家 1 区域 -->
+                        <!-- AI 玩家 2 区域 (上家) -->
                         <div class="player-unit left-unit">
-                            <div id="player-1" class="player-box ai-player">
-                                <div class="player-avatar">🤖</div>
-                                <div class="player-info">
-                                    <div class="player-name">AI 玩家 1 (P1)</div>
-                                    <div class="card-count"><span id="p1-card-count">16</span> 张手牌</div>
-                                </div>
-                                <div id="p1-status" class="player-status">等待中</div>
-                            </div>
-                            <!-- P1 面前出牌/过牌展示区 -->
-                            <div id="p1-action-area" class="player-action-display"></div>
-                        </div>
-
-                        <!-- AI 玩家 2 区域 -->
-                        <div class="player-unit right-unit">
                             <div id="player-2" class="player-box ai-player">
                                 <div class="player-avatar">🧠</div>
                                 <div class="player-info">
-                                    <div class="player-name">AI 玩家 2 (P2)</div>
+                                    <div class="player-name">AI 玩家 2 (P2 · 上家)</div>
                                     <div class="card-count"><span id="p2-card-count">16</span> 张手牌</div>
                                 </div>
                                 <div id="p2-status" class="player-status">等待中</div>
                             </div>
                             <!-- P2 面前出牌/过牌展示区 -->
                             <div id="p2-action-area" class="player-action-display"></div>
+                        </div>
+
+                        <!-- AI 玩家 1 区域 (下家) -->
+                        <div class="player-unit right-unit">
+                            <div id="player-1" class="player-box ai-player">
+                                <div class="player-avatar">🤖</div>
+                                <div class="player-info">
+                                    <div class="player-name">AI 玩家 1 (P1 · 下家)</div>
+                                    <div class="card-count"><span id="p1-card-count">16</span> 张手牌</div>
+                                </div>
+                                <div id="p1-status" class="player-status">等待中</div>
+                            </div>
+                            <!-- P1 面前出牌/过牌展示区 -->
+                            <div id="p1-action-area" class="player-action-display"></div>
                         </div>
                     </div>
 
