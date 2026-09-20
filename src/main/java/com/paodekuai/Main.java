@@ -6,22 +6,60 @@ import com.paodekuai.game.PublicView;
 import com.paodekuai.model.Hand;
 import com.paodekuai.model.Move;
 import com.paodekuai.rules.Deck;
+import com.paodekuai.web.GameHttpServer;
 
 import java.util.List;
 import java.util.Random;
 
 /**
- * 跑得快现代 AI 对局系统演示入口
+ * 跑得快现代 AI 运行入口
+ * 默认启动本地 Web 网页对战客户端 (http://localhost:8080)
+ * 也可通过参数 --cli 运行纯命令行测试演示
  */
 public class Main {
 
     public static void main(String[] args) {
+        boolean runCli = false;
+        int port = 8080;
+
+        for (String arg : args) {
+            if ("--cli".equalsIgnoreCase(arg)) {
+                runCli = true;
+            } else if (arg.startsWith("--port=")) {
+                port = Integer.parseInt(arg.substring("--port=".length()));
+            }
+        }
+
+        if (runCli) {
+            runCliSimulation();
+        } else {
+            startWebServer(port);
+        }
+    }
+
+    private static void startWebServer(int port) {
+        try {
+            GameHttpServer server = new GameHttpServer(port);
+            server.start();
+
+            System.out.println("👉 服务已就绪。如需在命令行查看纯 AI 对局，可使用参数: mvn exec:java -Dexec.args=\"--cli\"");
+            System.out.println("按 Ctrl+C 可停止网页端服务。");
+
+            // 保持主线程存活
+            Thread.currentThread().join();
+        } catch (Exception e) {
+            System.err.println("启动 Web 服务失败: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private static void runCliSimulation() {
         System.out.println("===============================================================");
         System.out.println("   跑得快 AI 引擎 - PIMC (Perfect Information Monte Carlo)");
         System.out.println("   采用 Java 17 + PIMC 确定化采样 + Max^N MCTS 搜索");
         System.out.println("===============================================================\n");
 
-        boolean useFixedScenario = true; // 是否使用固定手牌测试用例 (与原项目对比)
+        boolean useFixedScenario = true;
         List<Hand> hands;
 
         if (useFixedScenario) {
@@ -46,14 +84,13 @@ public class Main {
         }
         System.out.println();
 
-        // 3位玩家均配备独立的 PIMC AI 引擎 (每步采样 25 个世界，每个世界推演 150 次)
         PimcAiPlayer[] aiPlayers = new PimcAiPlayer[]{
                 new PimcAiPlayer(25, 150),
                 new PimcAiPlayer(25, 150),
                 new PimcAiPlayer(25, 150)
         };
 
-        GameState state = new GameState(hands, 0, true); // P0 先手出牌，开启跑得快“能管必管”
+        GameState state = new GameState(hands, 0, true);
         int round = 1;
         long totalStartTime = System.currentTimeMillis();
 
@@ -71,11 +108,9 @@ public class Main {
                 System.out.println("桌面状态: [自由主动出牌]");
             }
 
-            // AI 基于不完全信息视角做出决策
             PimcAiPlayer.DecisionResult result = aiPlayers[currentId].decide(view);
             Move chosen = result.getSelectedMove();
 
-            // 打印部分思考前列的决策评估
             List<PimcAiPlayer.MoveEvaluation> evals = result.getEvaluations();
             if (evals.size() > 1) {
                 System.out.printf("  AI 评估候选动作数: %d，耗时: %d ms\n", evals.size(), result.getDurationMillis());
@@ -86,7 +121,6 @@ public class Main {
             }
 
             System.out.printf(">>> 玩家 P%d 决定出牌: %s\n\n", currentId, chosen.toCardString());
-
             state.applyMove(chosen);
         }
 

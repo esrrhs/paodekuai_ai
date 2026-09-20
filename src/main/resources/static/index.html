@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>跑得快 AI 对战平台 (PIMC 算法体验)</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">♠️</span>
+                <h1>跑得快 AI 对战室 <span class="badge">PIMC + Max^N MCTS</span></h1>
+            </div>
+            <div class="header-actions">
+                <button id="btn-new-game" class="btn btn-secondary">🔄 重开新局</button>
+            </div>
+        </header>
+
+        <!-- 主体对战区与分析侧边栏 -->
+        <main class="main-content">
+            <!-- 牌桌区 -->
+            <section class="table-container">
+                <div class="poker-table">
+                    <!-- 上方两名 AI 玩家 -->
+                    <div class="opponents-row">
+                        <!-- AI 玩家 1 -->
+                        <div id="player-1" class="player-box ai-player">
+                            <div class="player-avatar">🤖</div>
+                            <div class="player-info">
+                                <div class="player-name">AI 玩家 1 (P1)</div>
+                                <div class="card-count"><span id="p1-card-count">16</span> 张手牌</div>
+                            </div>
+                            <div id="p1-status" class="player-status">等待中</div>
+                            <div id="p1-last-move" class="played-cards-bubble"></div>
+                        </div>
+
+                        <!-- AI 玩家 2 -->
+                        <div id="player-2" class="player-box ai-player">
+                            <div class="player-avatar">🧠</div>
+                            <div class="player-info">
+                                <div class="player-name">AI 玩家 2 (P2)</div>
+                                <div class="card-count"><span id="p2-card-count">16</span> 张手牌</div>
+                            </div>
+                            <div id="p2-status" class="player-status">等待中</div>
+                            <div id="p2-last-move" class="played-cards-bubble"></div>
+                        </div>
+                    </div>
+
+                    <!-- 桌面中央出牌区 -->
+                    <div class="center-trick-area">
+                        <div class="trick-status-badge" id="trick-status-text">自由出牌</div>
+                        <div id="table-cards" class="table-cards-display"></div>
+                    </div>
+
+                    <!-- 底部人类玩家区 -->
+                    <div class="human-section">
+                        <!-- 操作提示与控制按钮 -->
+                        <div class="human-controls">
+                            <div class="turn-indicator" id="turn-indicator">轮到你出牌</div>
+                            <div class="action-buttons">
+                                <button id="btn-play" class="btn btn-primary" disabled>出 牌</button>
+                                <button id="btn-hint" class="btn btn-info">💡 AI 提示</button>
+                                <button id="btn-pass" class="btn btn-warning" disabled>不出 (PASS)</button>
+                            </div>
+                        </div>
+
+                        <!-- 人类手牌展示 -->
+                        <div class="human-player-box">
+                            <div class="human-info">
+                                <span class="human-avatar">👤</span>
+                                <strong>你 (玩家 P0)</strong>
+                                <span class="hand-count">(剩余 <span id="p0-card-count">16</span> 张)</span>
+                            </div>
+                            <div id="human-hand" class="hand-cards-display"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 右侧战术与 AI 思考分析面板 -->
+            <aside class="sidebar">
+                <!-- 实时 AI 思考雷达 -->
+                <div class="panel ai-thought-panel">
+                    <h3>🔍 AI 思考雷达 (PIMC 战术分析)</h3>
+                    <div id="ai-thought-content" class="ai-thought-content">
+                        <p class="placeholder-text">等待 AI 做出决策，将在此展示可能世界采样统计与各候选出牌的胜率评估...</p>
+                    </div>
+                </div>
+
+                <!-- 记牌器面板 -->
+                <div class="panel card-counter-panel">
+                    <h3>📊 牌池记牌器 (已出牌统计)</h3>
+                    <div id="card-counter" class="card-counter-grid"></div>
+                </div>
+
+                <!-- 实时牌局动态日志 -->
+                <div class="panel logs-panel">
+                    <h3>📜 战报日志</h3>
+                    <div id="event-logs" class="logs-container"></div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <!-- 弹窗通知 (胜负结果) -->
+    <div id="modal-overlay" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2 id="modal-title">胜负揭晓</h2>
+            <p id="modal-message"></p>
+            <button id="modal-btn-restart" class="btn btn-primary">再来一局</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
