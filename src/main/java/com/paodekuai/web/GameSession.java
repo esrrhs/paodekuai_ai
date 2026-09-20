@@ -9,6 +9,7 @@ import com.paodekuai.model.Rank;
 import com.paodekuai.rules.Deck;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -16,7 +17,7 @@ import java.util.Map;
 import java.util.Random;
 
 /**
- * 网页游戏会话控制器 (支持 1 真人 + 2 AI)
+ * 网页游戏会话控制器 (支持 1 真人 + 2 AI，多会话独立隔离)
  */
 public class GameSession {
     private GameState gameState;
@@ -25,6 +26,8 @@ public class GameSession {
     private final PimcAiPlayer hintAi;
     private final Map<Integer, PimcAiPlayer.DecisionResult> lastAiThoughts = new HashMap<>();
     private final List<String> eventLogs = new ArrayList<>();
+    // 记录每位玩家在当前轮次面前展示的最新动作 (出牌或过牌)
+    private final Move[] playerLastActions = new Move[3];
     private final Random random = new Random();
 
     public GameSession() {
@@ -40,6 +43,7 @@ public class GameSession {
         this.gameState = new GameState(hands, 0, true);
         this.lastAiThoughts.clear();
         this.eventLogs.clear();
+        Arrays.fill(this.playerLastActions, null);
         addLog("🎲 牌局开始！每位玩家分得 16 张牌，由玩家 P0 (真人) 先手出牌。");
     }
 
@@ -53,6 +57,10 @@ public class GameSession {
 
     public synchronized Map<Integer, PimcAiPlayer.DecisionResult> getLastAiThoughts() {
         return Collections.unmodifiableMap(lastAiThoughts);
+    }
+
+    public synchronized Move[] getPlayerLastActions() {
+        return playerLastActions.clone();
     }
 
     public synchronized void addLog(String log) {
@@ -96,13 +104,19 @@ public class GameSession {
             return "不符合跑得快规则或压不过上家牌！请重新选牌或查看提示。";
         }
 
+        // 如果是新一轮主动出牌 (自由出牌)，清空上一轮各玩家面前遗留的出牌与不要
+        if (gameState.getLastMove() == null || gameState.getLastMove().isPass()) {
+            Arrays.fill(playerLastActions, null);
+        }
+
+        playerLastActions[0] = matchedMove;
         gameState.applyMove(matchedMove);
         addLog(String.format("👉 玩家 P0 (真人) 出牌: %s (%s)", matchedMove.toCardString(), matchedMove.getType().getDescription()));
 
         if (gameState.isGameOver()) {
             addLog("👑 恭喜你！手牌已全部出完，获得胜利！🎉");
         }
-        return null; // null 表示成功
+        return null;
     }
 
     /**
@@ -122,6 +136,7 @@ public class GameSession {
             return "跑得快规则：能管必管，手牌有能压制的牌时不可过牌！";
         }
 
+        playerLastActions[0] = passMove;
         gameState.applyMove(passMove);
         addLog("👉 玩家 P0 (真人) 选择了【不出/过牌】。");
         return null;
@@ -139,6 +154,11 @@ public class GameSession {
             return "轮到真人行动";
         }
 
+        // 如果是新一轮主动出牌 (自由出牌)，清空上一轮各玩家面前遗留的出牌与不要
+        if (gameState.getLastMove() == null || gameState.getLastMove().isPass()) {
+            Arrays.fill(playerLastActions, null);
+        }
+
         PublicView view = gameState.getPublicView(activeId);
         PimcAiPlayer ai = (activeId == 1) ? aiPlayer1 : aiPlayer2;
 
@@ -146,10 +166,11 @@ public class GameSession {
         Move chosen = result.getSelectedMove();
         lastAiThoughts.put(activeId, result);
 
+        playerLastActions[activeId] = chosen;
         gameState.applyMove(chosen);
 
         if (chosen.isPass()) {
-            addLog(String.format("🤖 玩家 P%d (AI) 选择了【过牌】", activeId));
+            addLog(String.format("🤖 玩家 P%d (AI) 选择了【不出/过牌】", activeId));
         } else {
             addLog(String.format("🤖 玩家 P%d (AI) 出牌: %s (%s)",
                     activeId, chosen.toCardString(), chosen.getType().getDescription()));

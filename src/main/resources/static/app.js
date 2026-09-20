@@ -1,8 +1,22 @@
-// 跑得快网页端游戏逻辑与交互控制
+// 跑得快网页端游戏逻辑与交互控制 (多 Session 支持与独立出牌区)
 document.addEventListener("DOMContentLoaded", () => {
     let currentState = null;
     let selectedCards = [];
     let isAiStepInProgress = false;
+
+    // 获取或初始化多用户独立 Session ID
+    let sessionId = localStorage.getItem("paodekuai_session_id");
+    if (!sessionId) {
+        sessionId = "sess_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9);
+        localStorage.setItem("paodekuai_session_id", sessionId);
+    }
+
+    // 封装带 Session 头的 fetch 请求
+    async function sessionFetch(url, options = {}) {
+        options.headers = options.headers || {};
+        options.headers["X-Session-Id"] = sessionId;
+        return fetch(url, options);
+    }
 
     // DOM 元素引用
     const p1CardCount = document.getElementById("p1-card-count");
@@ -10,13 +24,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const p0CardCount = document.getElementById("p0-card-count");
     const p1Status = document.getElementById("p1-status");
     const p2Status = document.getElementById("p2-status");
-    const p1LastMove = document.getElementById("p1-last-move");
-    const p2LastMove = document.getElementById("p2-last-move");
 
     const player1Box = document.getElementById("player-1");
     const player2Box = document.getElementById("player-2");
 
-    const tableCards = document.getElementById("table-cards");
+    // 各玩家专属出牌/过牌展示区
+    const p0ActionArea = document.getElementById("p0-action-area");
+    const p1ActionArea = document.getElementById("p1-action-area");
+    const p2ActionArea = document.getElementById("p2-action-area");
+
     const trickStatusText = document.getElementById("trick-status-text");
     const turnIndicator = document.getElementById("turn-indicator");
 
@@ -25,6 +41,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnHint = document.getElementById("btn-hint");
     const btnPass = document.getElementById("btn-pass");
     const btnNewGame = document.getElementById("btn-new-game");
+    const btnRules = document.getElementById("btn-rules");
 
     const aiThoughtContent = document.getElementById("ai-thought-content");
     const cardCounter = document.getElementById("card-counter");
@@ -34,6 +51,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const modalTitle = document.getElementById("modal-title");
     const modalMessage = document.getElementById("modal-message");
     const modalBtnRestart = document.getElementById("modal-btn-restart");
+
+    // 规则弹窗
+    const rulesModal = document.getElementById("rules-modal");
+    const rulesCloseIcon = document.getElementById("rules-close-icon");
+    const btnRulesConfirm = document.getElementById("btn-rules-confirm");
 
     // 初始化加载
     fetchState();
@@ -45,9 +67,14 @@ document.addEventListener("DOMContentLoaded", () => {
     btnNewGame.addEventListener("click", handleNewGame);
     modalBtnRestart.addEventListener("click", handleNewGame);
 
+    // 规则弹窗事件
+    btnRules.addEventListener("click", () => rulesModal.classList.remove("hidden"));
+    rulesCloseIcon.addEventListener("click", () => rulesModal.classList.add("hidden"));
+    btnRulesConfirm.addEventListener("click", () => rulesModal.classList.add("hidden"));
+
     async function fetchState() {
         try {
-            const res = await fetch("/api/game/state");
+            const res = await sessionFetch("/api/game/state");
             const data = await res.json();
             updateUI(data);
         } catch (err) {
@@ -59,7 +86,7 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             modalOverlay.classList.add("hidden");
             selectedCards = [];
-            const res = await fetch("/api/game/new", { method: "POST" });
+            const res = await sessionFetch("/api/game/new", { method: "POST" });
             const data = await res.json();
             updateUI(data);
         } catch (err) {
@@ -70,7 +97,7 @@ document.addEventListener("DOMContentLoaded", () => {
     async function handlePlay() {
         if (selectedCards.length === 0) return;
         try {
-            const res = await fetch("/api/game/play", {
+            const res = await sessionFetch("/api/game/play", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ cards: selectedCards })
@@ -89,7 +116,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function handlePass() {
         try {
-            const res = await fetch("/api/game/pass", { method: "POST" });
+            const res = await sessionFetch("/api/game/pass", { method: "POST" });
             const data = await res.json();
             if (data.error) {
                 alert("⚠️ " + data.error);
@@ -104,7 +131,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function handleHint() {
         try {
-            const res = await fetch("/api/game/hint");
+            const res = await sessionFetch("/api/game/hint");
             const data = await res.json();
             if (!data.hint || data.hint.length === 0) {
                 if (data.isPass) {
@@ -143,8 +170,8 @@ document.addEventListener("DOMContentLoaded", () => {
         p2Status.textContent = (state.activePlayer === 2) ? "思考中..." : "等待中";
         p2Status.classList.toggle("thinking", state.activePlayer === 2);
 
-        // 更新中央出牌区
-        renderTableCards(state.lastMove);
+        // 更新每位玩家面前的出牌/过牌区域
+        renderPlayerActions(state.playerActions, state.lastMove);
 
         // 更新人类手牌
         renderHand(state.humanHand);
@@ -180,7 +207,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // 人性化稍作延时，便于玩家看清出牌过程 (450ms)
         setTimeout(async () => {
             try {
-                const res = await fetch("/api/game/ai-step", { method: "POST" });
+                const res = await sessionFetch("/api/game/ai-step", { method: "POST" });
                 const data = await res.json();
                 isAiStepInProgress = false;
                 updateUI(data);
@@ -191,9 +218,57 @@ document.addEventListener("DOMContentLoaded", () => {
         }, 450);
     }
 
+    function renderPlayerActions(actions, lastMove) {
+        const areaMap = [p0ActionArea, p1ActionArea, p2ActionArea];
+
+        // 清空所有区域
+        areaMap.forEach(area => area.innerHTML = "");
+
+        if (!lastMove || !lastMove.cards || lastMove.cards.length === 0) {
+            trickStatusText.textContent = "桌面清空 / 自由出牌";
+        } else {
+            const leadName = (lastMove.playerId === 0) ? "你 (P0)" : `AI (P${lastMove.playerId})`;
+            trickStatusText.textContent = `当前需压制: ${leadName} 的 [${lastMove.type}] (${lastMove.cards.length}张)`;
+        }
+
+        if (!actions) return;
+
+        actions.forEach((act, idx) => {
+            if (!act) return;
+            const container = areaMap[idx];
+
+            if (act.isPass) {
+                const badge = document.createElement("div");
+                badge.className = "pass-badge";
+                badge.textContent = "不出 / PASS";
+                container.appendChild(badge);
+            } else if (act.cards && act.cards.length > 0) {
+                act.cards.forEach(cardSymbol => {
+                    const el = document.createElement("div");
+                    el.className = "card small";
+                    if (cardSymbol === "2" || cardSymbol === "A") {
+                        el.classList.add("red");
+                    }
+                    el.innerHTML = `
+                        <div class="card-corner">${cardSymbol}</div>
+                        <div class="card-center">${getCardSuit(cardSymbol)}</div>
+                        <div class="card-corner bottom">${cardSymbol}</div>
+                    `;
+                    container.appendChild(el);
+                });
+
+                if (act.type) {
+                    const tag = document.createElement("span");
+                    tag.className = "action-type-tag";
+                    tag.textContent = act.type;
+                    container.appendChild(tag);
+                }
+            }
+        });
+    }
+
     function renderHand(cards) {
         humanHand.innerHTML = "";
-        // 统计已选中的牌分布，确保相同点数的牌能正确定位
         const selectedMap = {};
         selectedCards.forEach(c => {
             selectedMap[c] = (selectedMap[c] || 0) + 1;
@@ -205,12 +280,10 @@ document.addEventListener("DOMContentLoaded", () => {
             const el = document.createElement("div");
             el.className = "card";
 
-            // 判断是否为大牌或红牌显示美化
             if (cardSymbol === "2" || cardSymbol === "A") {
                 el.classList.add("red");
             }
 
-            // 检查是否已被选中
             const needed = selectedMap[cardSymbol] || 0;
             const currentCount = activeSelectedMap[cardSymbol] || 0;
             if (currentCount < needed) {
@@ -245,36 +318,10 @@ document.addEventListener("DOMContentLoaded", () => {
         btnPlay.disabled = selectedCards.length === 0;
     }
 
-    function renderTableCards(lastMove) {
-        tableCards.innerHTML = "";
-        if (!lastMove || !lastMove.cards || lastMove.cards.length === 0) {
-            trickStatusText.textContent = "桌面清空 / 自由出牌";
-            return;
-        }
-
-        const playerName = (lastMove.playerId === 0) ? "你 (P0)" : `AI (P${lastMove.playerId})`;
-        trickStatusText.textContent = `${playerName} 出牌: ${lastMove.type} (${lastMove.cards.length}张)`;
-
-        lastMove.cards.forEach(cardSymbol => {
-            const el = document.createElement("div");
-            el.className = "card small";
-            if (cardSymbol === "2" || cardSymbol === "A") {
-                el.classList.add("red");
-            }
-            el.innerHTML = `
-                <div class="card-corner">${cardSymbol}</div>
-                <div class="card-center">${getCardSuit(cardSymbol)}</div>
-                <div class="card-corner bottom">${cardSymbol}</div>
-            `;
-            tableCards.appendChild(el);
-        });
-    }
-
     function renderCardCounter(stats) {
         cardCounter.innerHTML = "";
         if (!stats) return;
 
-        // 跑得快 48 张标准初始牌量
         const totalStock = {
             "3": 4, "4": 4, "5": 4, "6": 4, "7": 4, "8": 4, "9": 4, "10": 4,
             "J": 4, "Q": 4, "K": 4, "A": 3, "2": 1

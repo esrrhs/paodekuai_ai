@@ -13,25 +13,59 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
- * 嵌入式 HTTP 服务器 (提供 REST API 与 Web 静态页面)
+ * 嵌入式 HTTP 服务器 (支持多 Session 并发隔离、REST API 与 Web 静态页面)
  */
 public class GameHttpServer {
     private final int port;
-    private final GameSession session;
     private final ObjectMapper mapper = new ObjectMapper();
     private HttpServer server;
 
+    // 会话容器：支持多个玩家/浏览器同时独立游戏
+    private static class SessionContainer {
+        final GameSession session;
+        volatile long lastAccessTime;
+
+        SessionContainer(GameSession session) {
+            this.session = session;
+            this.lastAccessTime = System.currentTimeMillis();
+        }
+
+        void touch() {
+            this.lastAccessTime = System.currentTimeMillis();
+        }
+    }
+
+    private final ConcurrentHashMap<String, SessionContainer> sessions = new ConcurrentHashMap<>();
+    private final ScheduledExecutorService sessionCleaner = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "Session-Cleaner");
+        t.setDaemon(true);
+        return t;
+    });
+
     public GameHttpServer(int port) {
         this.port = port;
-        this.session = new GameSession();
+        // 每 10 分钟自动清理超过 1 小时未活动的闲置 Session
+        this.sessionCleaner.scheduleAtFixedRate(this::cleanExpiredSessions, 10, 10, TimeUnit.MINUTES);
+    }
+
+    private void cleanExpiredSessions() {
+        long now = System.currentTimeMillis();
+        long expireTime = 3600_000; // 1 小时
+        sessions.entrySet().removeIf(entry -> (now - entry.getValue().lastAccessTime) > expireTime);
     }
 
     public void start() throws IOException {
@@ -48,10 +82,11 @@ public class GameHttpServer {
         // 静态资源路由
         server.createContext("/", this::handleStatic);
 
-        server.setExecutor(null);
+        // 使用轻量线程池处理并发请求
+        server.setExecutor(Executors.newCachedThreadPool());
         server.start();
         System.out.println("===============================================================");
-        System.out.println(" 🌐 跑得快 AI 网页客户端已启动！");
+        System.out.println(" 🌐 跑得快 AI 网页客户端已启动！(支持多用户并发对局)");
         System.out.printf(" 🎮 请在浏览器中打开: http://localhost:%d\n", port);
         System.out.println("===============================================================");
     }
@@ -60,6 +95,37 @@ public class GameHttpServer {
         if (server != null) {
             server.stop(0);
         }
+        sessionCleaner.shutdown();
+    }
+
+    private String getOrInitSessionId(HttpExchange exchange) {
+        // 优先从 Header 获取
+        String sessionId = exchange.getRequestHeaders().getFirst("X-Session-Id");
+        if (sessionId == null || sessionId.isBlank()) {
+            // 尝试从 Query Param 获取
+            URI uri = exchange.getRequestURI();
+            String query = uri.getQuery();
+            if (query != null && query.contains("sessionId=")) {
+                for (String param : query.split("&")) {
+                    if (param.startsWith("sessionId=")) {
+                        sessionId = param.substring("sessionId=".length());
+                        break;
+                    }
+                }
+            }
+        }
+        if (sessionId == null || sessionId.isBlank()) {
+            sessionId = "sess_" + UUID.randomUUID().toString().replace("-", "");
+        }
+        exchange.getResponseHeaders().set("X-Session-Id", sessionId);
+        return sessionId;
+    }
+
+    private GameSession getSession(HttpExchange exchange) {
+        String sessionId = getOrInitSessionId(exchange);
+        SessionContainer container = sessions.computeIfAbsent(sessionId, id -> new SessionContainer(new GameSession()));
+        container.touch();
+        return container.session;
     }
 
     private void handleStatic(HttpExchange exchange) throws IOException {
@@ -86,12 +152,14 @@ public class GameHttpServer {
     }
 
     private void handleState(HttpExchange exchange) throws IOException {
-        sendJson(exchange, 200, buildStateDto(null));
+        GameSession session = getSession(exchange);
+        sendJson(exchange, 200, buildStateDto(session, null));
     }
 
     private void handleNewGame(HttpExchange exchange) throws IOException {
+        GameSession session = getSession(exchange);
         session.newGame();
-        sendJson(exchange, 200, buildStateDto("新对局已创建！"));
+        sendJson(exchange, 200, buildStateDto(session, "新对局已创建！"));
     }
 
     private void handlePlay(HttpExchange exchange) throws IOException {
@@ -100,6 +168,7 @@ public class GameHttpServer {
             return;
         }
 
+        GameSession session = getSession(exchange);
         InputStream is = exchange.getRequestBody();
         Map<?, ?> body = mapper.readValue(is, Map.class);
         List<?> cardsRaw = (List<?>) body.get("cards");
@@ -112,31 +181,34 @@ public class GameHttpServer {
 
         String error = session.humanPlay(cards);
         if (error != null) {
-            Map<String, Object> resp = buildStateDto(null);
+            Map<String, Object> resp = buildStateDto(session, null);
             resp.put("error", error);
             sendJson(exchange, 400, resp);
         } else {
-            sendJson(exchange, 200, buildStateDto("出牌成功！"));
+            sendJson(exchange, 200, buildStateDto(session, "出牌成功！"));
         }
     }
 
     private void handlePass(HttpExchange exchange) throws IOException {
+        GameSession session = getSession(exchange);
         String error = session.humanPass();
         if (error != null) {
-            Map<String, Object> resp = buildStateDto(null);
+            Map<String, Object> resp = buildStateDto(session, null);
             resp.put("error", error);
             sendJson(exchange, 400, resp);
         } else {
-            sendJson(exchange, 200, buildStateDto("已过牌"));
+            sendJson(exchange, 200, buildStateDto(session, "已过牌"));
         }
     }
 
     private void handleAiStep(HttpExchange exchange) throws IOException {
+        GameSession session = getSession(exchange);
         String moveStr = session.aiStep();
-        sendJson(exchange, 200, buildStateDto("AI 思考完成: " + moveStr));
+        sendJson(exchange, 200, buildStateDto(session, "AI 思考完成: " + moveStr));
     }
 
     private void handleHint(HttpExchange exchange) throws IOException {
+        GameSession session = getSession(exchange);
         Move hint = session.getHumanHint();
         Map<String, Object> resp = new HashMap<>();
         if (hint == null) {
@@ -153,7 +225,7 @@ public class GameHttpServer {
         sendJson(exchange, 200, resp);
     }
 
-    private Map<String, Object> buildStateDto(String message) {
+    private Map<String, Object> buildStateDto(GameSession session, String message) {
         GameState state = session.getGameState();
         Map<String, Object> dto = new LinkedHashMap<>();
         dto.put("message", message);
@@ -175,7 +247,7 @@ public class GameHttpServer {
         }
         dto.put("cardCounts", counts);
 
-        // 桌面最新出牌
+        // 桌面最新出牌 (当前轮次要被压制的目标)
         Move lastMove = state.getLastMove();
         if (lastMove != null && !lastMove.isPass()) {
             Map<String, Object> lastMoveMap = new HashMap<>();
@@ -190,6 +262,28 @@ public class GameHttpServer {
         } else {
             dto.put("lastMove", null);
         }
+
+        // 3位玩家各自面前展示的最新动作 (出牌或不出/PASS)
+        List<Map<String, Object>> playerActions = new ArrayList<>();
+        Move[] actions = session.getPlayerLastActions();
+        for (int i = 0; i < 3; i++) {
+            Move m = actions[i];
+            if (m == null) {
+                playerActions.add(null);
+            } else {
+                Map<String, Object> act = new HashMap<>();
+                act.put("playerId", i);
+                act.put("isPass", m.isPass());
+                act.put("type", m.getType().getDescription());
+                List<String> cards = new ArrayList<>();
+                for (Rank r : m.getCards()) {
+                    cards.add(r.getSymbol());
+                }
+                act.put("cards", cards);
+                playerActions.add(act);
+            }
+        }
+        dto.put("playerActions", playerActions);
 
         // 真人是否可以不出
         List<Move> legalMoves = state.getLegalMoves();

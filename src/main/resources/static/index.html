@@ -15,6 +15,7 @@
                 <h1>跑得快 AI 对战室 <span class="badge">PIMC + Max^N MCTS</span></h1>
             </div>
             <div class="header-actions">
+                <button id="btn-rules" class="btn btn-secondary">📖 游戏规则</button>
                 <button id="btn-new-game" class="btn btn-secondary">🔄 重开新局</button>
             </div>
         </header>
@@ -26,37 +27,45 @@
                 <div class="poker-table">
                     <!-- 上方两名 AI 玩家 -->
                     <div class="opponents-row">
-                        <!-- AI 玩家 1 -->
-                        <div id="player-1" class="player-box ai-player">
-                            <div class="player-avatar">🤖</div>
-                            <div class="player-info">
-                                <div class="player-name">AI 玩家 1 (P1)</div>
-                                <div class="card-count"><span id="p1-card-count">16</span> 张手牌</div>
+                        <!-- AI 玩家 1 区域 -->
+                        <div class="player-unit left-unit">
+                            <div id="player-1" class="player-box ai-player">
+                                <div class="player-avatar">🤖</div>
+                                <div class="player-info">
+                                    <div class="player-name">AI 玩家 1 (P1)</div>
+                                    <div class="card-count"><span id="p1-card-count">16</span> 张手牌</div>
+                                </div>
+                                <div id="p1-status" class="player-status">等待中</div>
                             </div>
-                            <div id="p1-status" class="player-status">等待中</div>
-                            <div id="p1-last-move" class="played-cards-bubble"></div>
+                            <!-- P1 面前出牌/过牌展示区 -->
+                            <div id="p1-action-area" class="player-action-display"></div>
                         </div>
 
-                        <!-- AI 玩家 2 -->
-                        <div id="player-2" class="player-box ai-player">
-                            <div class="player-avatar">🧠</div>
-                            <div class="player-info">
-                                <div class="player-name">AI 玩家 2 (P2)</div>
-                                <div class="card-count"><span id="p2-card-count">16</span> 张手牌</div>
+                        <!-- AI 玩家 2 区域 -->
+                        <div class="player-unit right-unit">
+                            <div id="player-2" class="player-box ai-player">
+                                <div class="player-avatar">🧠</div>
+                                <div class="player-info">
+                                    <div class="player-name">AI 玩家 2 (P2)</div>
+                                    <div class="card-count"><span id="p2-card-count">16</span> 张手牌</div>
+                                </div>
+                                <div id="p2-status" class="player-status">等待中</div>
                             </div>
-                            <div id="p2-status" class="player-status">等待中</div>
-                            <div id="p2-last-move" class="played-cards-bubble"></div>
+                            <!-- P2 面前出牌/过牌展示区 -->
+                            <div id="p2-action-area" class="player-action-display"></div>
                         </div>
                     </div>
 
-                    <!-- 桌面中央出牌区 -->
+                    <!-- 桌面中央状态提示区 -->
                     <div class="center-trick-area">
                         <div class="trick-status-badge" id="trick-status-text">自由出牌</div>
-                        <div id="table-cards" class="table-cards-display"></div>
                     </div>
 
                     <!-- 底部人类玩家区 -->
                     <div class="human-section">
+                        <!-- P0 (真人) 面前出牌/过牌展示区 -->
+                        <div id="p0-action-area" class="player-action-display human-action-display"></div>
+
                         <!-- 操作提示与控制按钮 -->
                         <div class="human-controls">
                             <div class="turn-indicator" id="turn-indicator">轮到你出牌</div>
@@ -103,6 +112,51 @@
                 </div>
             </aside>
         </main>
+    </div>
+
+    <!-- 游戏规则弹窗 -->
+    <div id="rules-modal" class="modal-overlay hidden">
+        <div class="modal-content rules-modal-content">
+            <div class="modal-header">
+                <h2>📖 跑得快游戏规则详解</h2>
+                <button id="rules-close-icon" class="btn-close">&times;</button>
+            </div>
+            <div class="rules-body">
+                <section class="rule-sec">
+                    <h4>1. 牌数与人数</h4>
+                    <p>标准 3 人对局，总共 48 张扑克牌（无大小王，去掉 3 张 2 和 1 张 A，保留 1 张 2、3 张 A 以及 3~K 各 4 张）。每人发 16 张手牌。</p>
+                </section>
+
+                <section class="rule-sec highlight-sec">
+                    <h4>⚠️ 2. 核心规则：能管必管 / 有牌必压</h4>
+                    <p>这是正宗跑得快与斗地主的最大区别：<strong>当上家出牌后，若你手牌中存在能够大过上家的合法牌型，规则强制要求必须打出，不允许选择“不出 (PASS)”！</strong></p>
+                    <p>只有当你手中<strong>完全没有任何牌能够压制</strong>时，“不出 (PASS)”按钮才会解锁可用。这也是为什么有时 PASS 按钮为置灰状态的原因。</p>
+                </section>
+
+                <section class="rule-sec">
+                    <h4>3. 牌型与大小</h4>
+                    <ul>
+                        <li><strong>点数顺序</strong>：2 > A > K > Q > J > 10 > 9 > 8 > 7 > 6 > 5 > 4 > 3</li>
+                        <li><strong>单张</strong>：任意单张牌，比点数大小。</li>
+                        <li><strong>对子</strong>：两张点数相同的牌。</li>
+                        <li><strong>三张</strong>：三张同点数牌，可单出，也可三带一、三带二（可带一对或两张单牌）。</li>
+                        <li><strong>顺子</strong>：5 张或以上连续单牌（3 到 A，顺子不能包含 2）。</li>
+                        <li><strong>连对</strong>：2 对或以上连续对子（如 3344，最大到 AA）。</li>
+                        <li><strong>飞机</strong>：2 个或以上连续三张，可带单牌或对子。</li>
+                        <li><strong>炸弹</strong>：4 张同点数牌，能压除更大炸弹外的所有普通牌型。</li>
+                        <li><strong>四带二</strong>：4 张同点数带两张单牌或一对。</li>
+                    </ul>
+                </section>
+
+                <section class="rule-sec">
+                    <h4>4. 胜负判定</h4>
+                    <p>各自为战，任何一位玩家率先出完手中的全部 16 张牌即刻获胜，牌局结束！</p>
+                </section>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-rules-confirm" class="btn btn-primary">我了解了，开始游戏</button>
+            </div>
+        </div>
     </div>
 
     <!-- 弹窗通知 (胜负结果) -->
