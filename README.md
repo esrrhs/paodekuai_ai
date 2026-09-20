@@ -1,6 +1,7 @@
 # 跑得快 AI (PaoDeKuai AI)
 
 [![License](https://img.shields.io/github/license/esrrhs/paodekuai_ai)](https://github.com/esrrhs/paodekuai_ai)
+[![Language](https://img.shields.io/github/languages/top/esrrhs/paodekuai_ai)](https://github.com/esrrhs/paodekuai_ai)
 [![Maven Central](https://img.shields.io/maven-central/v/com.github.esrrhs/paodekuai-ai)](https://central.sonatype.com/artifact/com.github.esrrhs/paodekuai-ai)
 [![Build Status](https://github.com/esrrhs/paodekuai_ai/actions/workflows/maven.yml/badge.svg?branch=master)](https://github.com/esrrhs/paodekuai_ai/actions)
 
