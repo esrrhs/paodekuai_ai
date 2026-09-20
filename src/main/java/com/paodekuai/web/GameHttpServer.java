@@ -233,6 +233,21 @@ public class GameHttpServer {
         dto.put("isGameOver", state.isGameOver());
         dto.put("winner", state.getWinnerId());
 
+        // 对局结束时摊开各家剩余手牌，供前端展示
+        if (state.isGameOver()) {
+            List<List<String>> revealedHands = new ArrayList<>();
+            for (int i = 0; i < 3; i++) {
+                List<String> cards = new ArrayList<>();
+                for (Rank r : state.getPlayer(i).getHand().getCards()) {
+                    cards.add(r.getSymbol());
+                }
+                revealedHands.add(cards);
+            }
+            dto.put("revealedHands", revealedHands);
+        } else {
+            dto.put("revealedHands", null);
+        }
+
         // 玩家 0 (真人) 的手牌
         List<String> humanHand = new ArrayList<>();
         for (Rank r : state.getPlayer(0).getHand().getCards()) {

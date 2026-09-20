@@ -6,12 +6,12 @@ import com.paodekuai.model.Move;
 import com.paodekuai.rules.MoveGenerator;
 
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.IntStream;
 
 /**
  * PIMC (Perfect Information Monte Carlo) 跑得快 AI 引擎
@@ -35,7 +35,8 @@ public class PimcAiPlayer {
     }
 
     public PimcAiPlayer() {
-        this(20, 150);
+        // 与斗地主端对齐的默认算力：更多假想世界 + 更深 MCTS
+        this(200, 1500);
     }
 
     /**
@@ -51,7 +52,7 @@ public class PimcAiPlayer {
             this.move = move;
         }
 
-        public void record(int visits, double winRate) {
+        public synchronized void record(int visits, double winRate) {
             this.totalVisits += visits;
             this.sumWinRate += winRate;
             this.sampleCount++;
@@ -118,10 +119,30 @@ public class PimcAiPlayer {
             return new DecisionResult(Move.pass(myId), List.of(), 0);
         }
 
+        // 可一手出完则直接斩杀
+        for (Move m : legalMoves) {
+            if (!m.isPass() && m.getCardCount() == publicView.getMyHand().getTotalCards()) {
+                MoveEvaluation eval = new MoveEvaluation(m);
+                eval.record(100, 1.0);
+                return new DecisionResult(m, List.of(eval), System.currentTimeMillis() - startTime);
+            }
+        }
+
         if (legalMoves.size() == 1) {
             Move singleOption = legalMoves.get(0);
             MoveEvaluation eval = new MoveEvaluation(singleOption);
-            eval.record(1, 1.0);
+            // 唯一着法时用少量 rollout 估胜率，避免虚假 100%
+            int wins = 0;
+            int sampleK = 15;
+            for (int i = 0; i < sampleK; i++) {
+                GameState world = Determinizer.determinize(publicView, random);
+                world.applyMove(singleOption);
+                FastRolloutPolicy.simulate(world, random);
+                if (world.getWinnerId() == myId) {
+                    wins++;
+                }
+            }
+            eval.record(sampleK, (double) wins / sampleK);
             return new DecisionResult(singleOption, List.of(eval), System.currentTimeMillis() - startTime);
         }
 
@@ -130,10 +151,12 @@ public class PimcAiPlayer {
             evalMap.put(m, new MoveEvaluation(m));
         }
 
-        // 运行 K 次确定化采样
-        for (int k = 0; k < numDeterminizations; k++) {
-            GameState world = Determinizer.determinize(publicView, random);
-            MctsNode root = searcher.search(world, mctsIterationsPerWorld);
+        // 多可能世界并行采样推演
+        IntStream.range(0, numDeterminizations).parallel().forEach(k -> {
+            Random workerRandom = ThreadLocalRandom.current();
+            GameState world = Determinizer.determinize(publicView, workerRandom);
+            MctsSearcher workerSearcher = new MctsSearcher(searcher.getExplorationParam(), workerRandom);
+            MctsNode root = workerSearcher.search(world, mctsIterationsPerWorld);
 
             for (Map.Entry<Move, MctsNode> entry : root.getChildren().entrySet()) {
                 Move move = entry.getKey();
@@ -144,12 +167,22 @@ public class PimcAiPlayer {
                     eval.record(child.getVisits(), child.getWinRate(myId));
                 }
             }
-        }
+        });
 
         List<MoveEvaluation> evalList = new ArrayList<>(evalMap.values());
-        // 综合评价：优先访问次数最多、胜率最高的稳健动作
-        evalList.sort(Comparator.comparingInt(MoveEvaluation::getTotalVisits).reversed()
-                .thenComparing(Comparator.comparingDouble(MoveEvaluation::getAverageWinRate).reversed()));
+        boolean urgent = BombPolicy.isBombUrgent(publicView);
+        boolean hasSafeAlternative = BombPolicy.hasSafeAlternative(legalMoves);
+        evalList.sort((a, b) -> {
+            double scoreA = BombPolicy.adjustedScore(
+                    a.getMove(), a.getTotalVisits(), a.getAverageWinRate(), urgent, hasSafeAlternative);
+            double scoreB = BombPolicy.adjustedScore(
+                    b.getMove(), b.getTotalVisits(), b.getAverageWinRate(), urgent, hasSafeAlternative);
+            int cmp = Double.compare(scoreB, scoreA);
+            if (cmp != 0) {
+                return cmp;
+            }
+            return Double.compare(b.getAverageWinRate(), a.getAverageWinRate());
+        });
 
         Move bestMove = evalList.get(0).getMove();
         long duration = System.currentTimeMillis() - startTime;

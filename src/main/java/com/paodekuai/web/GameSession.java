@@ -31,9 +31,9 @@ public class GameSession {
     private final Random random = new Random();
 
     public GameSession() {
-        this.aiPlayer1 = new PimcAiPlayer(20, 120, random);
-        this.aiPlayer2 = new PimcAiPlayer(20, 120, random);
-        this.hintAi = new PimcAiPlayer(15, 100, random);
+        this.aiPlayer1 = new PimcAiPlayer(200, 1500, random);
+        this.aiPlayer2 = new PimcAiPlayer(200, 1500, random);
+        this.hintAi = new PimcAiPlayer(40, 400, random);
         newGame();
     }
 

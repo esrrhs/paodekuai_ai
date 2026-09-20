@@ -86,9 +86,14 @@ public class FastRolloutPolicy {
             }
 
             if (!bombs.isEmpty()) {
-                // 上家手牌很少时（<=3张）积极放炸弹拦截
-                int lastPlayerCards = state.getPlayer(state.getLastMovePlayerId()).getCardCount();
-                if (lastPlayerCards <= 3 || passMove == null || random.nextDouble() < 0.25) {
+                // 非紧急坚决不炸；紧急或无法过牌时才炸
+                boolean urgent = BombPolicy.isBombUrgent(state) || passMove == null;
+                if (urgent) {
+                    bombs.sort(Comparator.comparingInt(Move::getMainRank));
+                    return bombs.get(0);
+                }
+                // 极低探索率，避免搜索完全学不到炸
+                if (passMove == null && random.nextDouble() < 0.02) {
                     bombs.sort(Comparator.comparingInt(Move::getMainRank));
                     return bombs.get(0);
                 }
