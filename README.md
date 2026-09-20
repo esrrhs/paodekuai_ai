@@ -1,8 +1,31 @@
 # 跑得快 AI (PaoDeKuai AI)
 
+[![License](https://img.shields.io/github/license/esrrhs/paodekuai_ai)](https://github.com/esrrhs/paodekuai_ai)
+[![Maven Central](https://img.shields.io/maven-central/v/com.github.esrrhs/paodekuai-ai)](https://central.sonatype.com/artifact/com.github.esrrhs/paodekuai-ai)
+[![Build Status](https://github.com/esrrhs/paodekuai_ai/actions/workflows/maven.yml/badge.svg?branch=master)](https://github.com/esrrhs/paodekuai_ai/actions)
+
 基于 **Java 17** 实现的高性能扑克牌游戏“**跑得快**”人工智能引擎与本地网页端对战平台。
 
 核心算法采用**完美信息蒙特卡洛 (PIMC, Perfect Information Monte Carlo)** 结合 **Max^N 蒙特卡洛树搜索 (MCTS)**，针对跑得快这一典型不完全信息博弈实现严谨且强力的出牌决策。
+
+---
+
+## 📦 依赖引入 (Installation)
+
+### Maven
+在项目的 `pom.xml` 中添加依赖：
+```xml
+<dependency>
+    <groupId>com.github.esrrhs</groupId>
+    <artifactId>paodekuai-ai</artifactId>
+    <version>1.0.0</version>
+</dependency>
+```
+
+### Gradle
+```groovy
+implementation 'com.github.esrrhs:paodekuai-ai:1.0.0'
+```
 
 ---
 
