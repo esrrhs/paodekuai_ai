@@ -3,6 +3,9 @@ document.addEventListener("DOMContentLoaded", () => {
     let currentState = null;
     let selectedCards = [];
     let isAiStepInProgress = false;
+    let gameOverRevealTimer = null;
+    let gameOverModalShown = false;
+    const GAME_OVER_REVEAL_MS = 3500;
 
     // 获取或初始化多用户独立 Session ID
     let sessionId = localStorage.getItem("paodekuai_session_id");
@@ -86,6 +89,11 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             modalOverlay.classList.add("hidden");
             selectedCards = [];
+            if (gameOverRevealTimer) {
+                clearTimeout(gameOverRevealTimer);
+                gameOverRevealTimer = null;
+            }
+            gameOverModalShown = false;
             const res = await sessionFetch("/api/game/new", { method: "POST" });
             const data = await res.json();
             updateUI(data);
@@ -183,8 +191,13 @@ document.addEventListener("DOMContentLoaded", () => {
         btnPass.disabled = !isHumanTurn || !state.canPass;
 
         if (state.isGameOver) {
-            turnIndicator.textContent = "对局结束";
-            showGameOverModal(state.winner);
+            turnIndicator.textContent = "对局结束 — AI 摊牌中，请查看剩余手牌...";
+            p1Status.textContent = "摊牌";
+            p1Status.classList.remove("thinking");
+            p2Status.textContent = "摊牌";
+            p2Status.classList.remove("thinking");
+            revealAiHands(state);
+            scheduleGameOverModal(state.winner);
         } else if (isHumanTurn) {
             turnIndicator.textContent = "👉 轮到你出牌！请选择手牌后出牌";
         } else {
@@ -218,11 +231,63 @@ document.addEventListener("DOMContentLoaded", () => {
         }, 450);
     }
 
+    function revealAiHands(state) {
+        const hands = state.revealedHands;
+        if (!hands) return;
+
+        const areaMap = { 1: p1ActionArea, 2: p2ActionArea };
+        const winnerId = state.winner;
+        [1, 2].forEach(id => {
+            const area = areaMap[id];
+            if (!area) return;
+
+            const cards = hands[id] || [];
+            // 出完手牌获胜的一方：保留刚打出的最后一手，不要盖成「已出完」
+            if (cards.length === 0 || id === winnerId) {
+                return;
+            }
+
+            area.innerHTML = "";
+            area.classList.add("revealed-hand-area");
+
+            const label = document.createElement("span");
+            label.className = "reveal-hand-label";
+            label.textContent = "摊牌";
+            area.appendChild(label);
+
+            cards.forEach(cardSymbol => {
+                const el = document.createElement("div");
+                el.className = "card small";
+                if (cardSymbol === "2" || cardSymbol === "A") {
+                    el.classList.add("red");
+                }
+                el.innerHTML = `
+                    <div class="card-corner">${cardSymbol}</div>
+                    <div class="card-center">${getCardSuit(cardSymbol)}</div>
+                    <div class="card-corner bottom">${cardSymbol}</div>
+                `;
+                area.appendChild(el);
+            });
+        });
+    }
+
+    function scheduleGameOverModal(winnerId) {
+        if (gameOverModalShown || gameOverRevealTimer) return;
+        gameOverRevealTimer = setTimeout(() => {
+            gameOverRevealTimer = null;
+            gameOverModalShown = true;
+            showGameOverModal(winnerId);
+        }, GAME_OVER_REVEAL_MS);
+    }
+
     function renderPlayerActions(actions, lastMove) {
         const areaMap = [p0ActionArea, p1ActionArea, p2ActionArea];
 
         // 清空所有区域
-        areaMap.forEach(area => area.innerHTML = "");
+        areaMap.forEach(area => {
+            area.innerHTML = "";
+            area.classList.remove("revealed-hand-area");
+        });
 
         if (!lastMove || !lastMove.cards || lastMove.cards.length === 0) {
             trickStatusText.textContent = "桌面清空 / 自由出牌";

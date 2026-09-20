@@ -188,6 +188,34 @@ body {
     padding: 4px 6px;
 }
 
+/* 局末 AI 摊牌 */
+.player-action-display.revealed-hand-area {
+    flex-wrap: wrap;
+    max-width: 280px;
+    background: rgba(15, 23, 42, 0.55);
+    border: 1px solid rgba(251, 191, 36, 0.45);
+    border-radius: 10px;
+    padding: 6px 8px;
+    animation: popIn 0.3s ease-out;
+}
+
+.reveal-hand-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #fbbf24;
+    letter-spacing: 1px;
+    margin-right: 4px;
+    flex-shrink: 0;
+}
+
+.revealed-hand-area .card.small {
+    margin-left: -10px;
+}
+
+.revealed-hand-area .card.small:first-of-type {
+    margin-left: 0;
+}
+
 .human-action-display {
     justify-content: center;
     min-height: 64px;
