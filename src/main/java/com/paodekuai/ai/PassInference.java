@@ -89,15 +89,43 @@ public final class PassInference {
         return hand;
     }
 
+    public static double likelihood(PublicView view, List<Hand> hands) {
+        int violations = countViolations(view, hands);
+        if (violations <= 0) {
+            return 1.0;
+        }
+        return Math.max(0.2, Math.pow(0.45, violations));
+    }
+
+    public static int[] allocateSearchIterations(double[] likelihoods, int fullIterations) {
+        int n = likelihoods.length;
+        double[] weight = new double[n];
+        double sum = 0.0;
+        for (int i = 0; i < n; i++) {
+            weight[i] = Math.max(0.25, likelihoods[i]);
+            sum += weight[i];
+        }
+        int[] iterations = new int[n];
+        for (int i = 0; i < n; i++) {
+            iterations[i] = Math.max(1, (int) Math.round(fullIterations * (n * weight[i] / sum)));
+        }
+        return iterations;
+    }
+
     public static boolean isWorldConsistent(PublicView view, List<Hand> hands) {
+        return countViolations(view, hands) == 0;
+    }
+
+    private static int countViolations(PublicView view, List<Hand> hands) {
         int myId = view.getViewingPlayerId();
         List<Move> history = view.getMoveHistory();
         List<Constraint> constraints = extractActiveConstraints(view);
         if (constraints.isEmpty()) {
-            return true;
+            return 0;
         }
 
         boolean mustBeat = view.isMustBeat();
+        int violations = 0;
         for (Constraint c : constraints) {
             if (c.passerId == myId) {
                 continue;
@@ -106,13 +134,13 @@ public final class PassInference {
                     hands.get(c.passerId), c.passerId, history, c.historyIndex);
             if (mustBeat) {
                 if (hasAnyBeater(handAtPass, c.challenge, c.passerId, true)) {
-                    return false;
+                    violations += 2;
                 }
             } else if (hasObviousCheapBeater(handAtPass, c.challenge, c.passerId)) {
-                return false;
+                violations++;
             }
         }
-        return true;
+        return violations;
     }
 
     static boolean hasAnyBeater(Hand hand, Move challenge, int playerId, boolean mustBeat) {

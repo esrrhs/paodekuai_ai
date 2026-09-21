@@ -151,17 +151,30 @@ public class PimcAiPlayer {
             evalMap.put(m, new MoveEvaluation(m));
         }
 
-        // 多可能世界并行采样推演
-        IntStream.range(0, numDeterminizations).parallel().forEach(k -> {
+        int worldCount = numDeterminizations;
+        Determinizer.SampledWorld[] worlds = new Determinizer.SampledWorld[worldCount];
+        IntStream.range(0, worldCount).parallel().forEach(k ->
+                worlds[k] = Determinizer.sample(publicView, ThreadLocalRandom.current()));
+
+        double[] likelihoods = new double[worldCount];
+        for (int i = 0; i < worldCount; i++) {
+            likelihoods[i] = worlds[i].likelihood();
+        }
+        int[] iterations = PassInference.allocateSearchIterations(likelihoods, mctsIterationsPerWorld);
+        Integer[] order = new Integer[worldCount];
+        for (int i = 0; i < worldCount; i++) {
+            order[i] = i;
+        }
+        java.util.Arrays.sort(order, (a, b) -> Double.compare(likelihoods[b], likelihoods[a]));
+
+        java.util.Arrays.stream(order).parallel().forEach(k -> {
             Random workerRandom = ThreadLocalRandom.current();
-            GameState world = Determinizer.determinize(publicView, workerRandom);
             MctsSearcher workerSearcher = new MctsSearcher(searcher.getExplorationParam(), workerRandom);
-            MctsNode root = workerSearcher.search(world, mctsIterationsPerWorld);
+            MctsNode root = workerSearcher.search(worlds[k].state(), iterations[k]);
 
             for (Map.Entry<Move, MctsNode> entry : root.getChildren().entrySet()) {
                 Move move = entry.getKey();
                 MctsNode child = entry.getValue();
-
                 MoveEvaluation eval = evalMap.get(move);
                 if (eval != null) {
                     eval.record(child.getVisits(), child.getWinRate(myId));
