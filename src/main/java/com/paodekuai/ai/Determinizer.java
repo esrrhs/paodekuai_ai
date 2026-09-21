@@ -14,23 +14,21 @@ import java.util.Random;
  * 确定化采样器 (Determinizer)
  * <p>
  * 未知牌池 = 48 张 − 自己手牌 − 已打出牌，再按剩余张数分给两名对手。
- * 采样后用过牌历史剪枝：能管必管下「过牌却有可压」的世界直接丢弃；
- * 非必管时否定「有便宜同型可压却过」的世界。
+ * 采样一次并给出过牌推断似然。上层按概率分配搜索算力，不再丢弃低概率世界。
  */
 public class Determinizer {
 
-    private static final int MAX_RESAMPLE_ATTEMPTS = 80;
-
     public static GameState determinize(PublicView publicView, Random random) {
-        GameState best = null;
-        for (int attempt = 0; attempt < MAX_RESAMPLE_ATTEMPTS; attempt++) {
-            List<Hand> hands = sampleHands(publicView, random);
-            if (PassInference.isWorldConsistent(publicView, hands)) {
-                return buildState(publicView, hands);
-            }
-            best = buildState(publicView, hands);
-        }
-        return best;
+        return sample(publicView, random).state();
+    }
+
+    public record SampledWorld(GameState state, double likelihood) {
+    }
+
+    public static SampledWorld sample(PublicView publicView, Random random) {
+        List<Hand> hands = sampleHands(publicView, random);
+        double likelihood = PassInference.likelihood(publicView, hands);
+        return new SampledWorld(buildState(publicView, hands), likelihood);
     }
 
     private static List<Hand> sampleHands(PublicView publicView, Random random) {
