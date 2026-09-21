@@ -11,11 +11,17 @@ import java.util.Random;
 
 /**
  * 蒙特卡洛树搜索器 (在确定化完全信息世界中执行)
- * 支持动作候选剪枝：非紧急局面剔除炸弹，把算力留给控场与过牌。
+ * <p>
+ * 剪枝是「推荐顺序 / 算力分配」而非硬性禁令：
+ * 优先给小牌、顺子/飞机等结构牌分配搜索预算；候选额度足够时尽量全覆盖；
+ * 尾牌阶段启发减弱，合法着法全量进入搜索树。迭代足够时会按序扩展完所有入选着法。
  */
 public class MctsSearcher {
     private final double explorationParam;
     private final Random random;
+
+    /** 手牌少于此阈值时不再按启发截断，全量搜索 */
+    private static final int ENDGAME_FULL_SEARCH_CARDS = 6;
 
     public MctsSearcher(double explorationParam, Random random) {
         this.explorationParam = explorationParam;
@@ -30,9 +36,6 @@ public class MctsSearcher {
         return explorationParam;
     }
 
-    /**
-     * 对指定的确定化状态执行 MCTS 搜索
-     */
     public MctsNode search(GameState state, int iterations) {
         List<Move> rootLegalMoves = state.getLegalMoves();
         List<Move> prunedRootMoves = pruneCandidateMoves(rootLegalMoves, state, 15);
@@ -46,21 +49,19 @@ public class MctsSearcher {
             GameState simState = state.copy();
             MctsNode node = root;
 
-            // 1. Selection (向下遍历至未完全扩展节点或终局)
             while (node.isFullyExpanded() && !node.getChildren().isEmpty() && !simState.isGameOver()) {
                 node = node.selectChild(explorationParam, random);
                 simState.applyMove(node.getMove());
             }
 
-            // 2. Expansion (扩展一个未探索的动作)
+            // 按推荐顺序优先扩展靠前着法；迭代足够时仍会扩展完整列表
             if (!simState.isGameOver() && !node.getUntriedMoves().isEmpty()) {
-                Move untriedMove = node.getUntriedMoves().get(random.nextInt(node.getUntriedMoves().size()));
+                Move untriedMove = node.getUntriedMoves().get(0);
                 simState.applyMove(untriedMove);
                 List<Move> nextLegalMoves = pruneCandidateMoves(simState.getLegalMoves(), simState, 10);
                 node = node.expand(untriedMove, simState.getActivePlayerIndex(), nextLegalMoves);
             }
 
-            // 3. Simulation / Rollout (快速推演至终局)
             int winnerId;
             if (simState.isGameOver()) {
                 winnerId = simState.getWinnerId();
@@ -68,7 +69,6 @@ public class MctsSearcher {
                 winnerId = FastRolloutPolicy.simulate(simState, random);
             }
 
-            // 4. Backpropagation (反向传播更新收益)
             node.backpropagate(winnerId);
         }
 
@@ -76,11 +76,13 @@ public class MctsSearcher {
     }
 
     /**
-     * 启发式动作候选过滤：提炼 Top 候选，非紧急时剔除炸弹。
+     * 按推荐顺序排列候选；额度不足时截断队尾，额度足够或尾牌阶段则全量保留。
      */
-    public static List<Move> pruneCandidateMoves(List<Move> moves, GameState state, int maxCandidates) {
+    public static List<Move> pruneCandidateMoves(List<Move> moves, GameState state, int baseMaxCandidates) {
         int handCardCount = state.getActivePlayer().getCardCount();
-        boolean keepBombs = BombPolicy.shouldKeepBombCandidates(state, moves);
+        boolean endgame = handCardCount <= ENDGAME_FULL_SEARCH_CARDS;
+        boolean keepBombs = endgame || BombPolicy.shouldKeepBombCandidates(state, moves);
+        int maxCandidates = resolveCandidateBudget(handCardCount, baseMaxCandidates);
 
         List<Move> pool = new ArrayList<>(moves.size());
         for (Move m : moves) {
@@ -96,78 +98,82 @@ public class MctsSearcher {
             pool = new ArrayList<>(moves);
         }
 
-        if (pool.size() <= maxCandidates) {
-            return pool;
+        List<Move> ordered = prioritizeMoves(pool, handCardCount, keepBombs);
+        if (ordered.size() <= maxCandidates) {
+            return ordered;
         }
+        return new ArrayList<>(ordered.subList(0, maxCandidates));
+    }
 
-        List<Move> selected = new ArrayList<>(maxCandidates);
-
-        // 1. 终局一手清空
-        for (Move m : pool) {
-            if (!m.isPass() && m.getCardCount() == handCardCount) {
-                selected.add(m);
-            }
+    static int resolveCandidateBudget(int handCardCount, int baseMaxCandidates) {
+        if (handCardCount <= ENDGAME_FULL_SEARCH_CARDS) {
+            return Integer.MAX_VALUE;
         }
+        if (handCardCount <= 10) {
+            return Math.max(baseMaxCandidates, baseMaxCandidates + 6);
+        }
+        return baseMaxCandidates;
+    }
 
-        // 2. PASS
+    static List<Move> prioritizeMoves(List<Move> pool, int handCardCount, boolean keepBombs) {
+        List<Move> clears = new ArrayList<>();
+        List<Move> passes = new ArrayList<>();
+        List<Move> structures = new ArrayList<>();
+        List<Move> normals = new ArrayList<>();
+        List<Move> bombs = new ArrayList<>();
+
         for (Move m : pool) {
             if (m.isPass()) {
-                selected.add(m);
-                break;
-            }
-        }
-
-        // 3. 结构牌
-        List<Move> combos = new ArrayList<>();
-        for (Move m : pool) {
-            if (m.getType() == CardType.STRAIGHT
-                    || m.getType() == CardType.CONSECUTIVE_PAIRS
-                    || m.getType() == CardType.AIRPLANE
-                    || m.getType() == CardType.AIRPLANE_PLUS_SINGLES
-                    || m.getType() == CardType.AIRPLANE_PLUS_PAIRS
-                    || m.getType() == CardType.TRIPLE_PLUS_ONE
-                    || m.getType() == CardType.TRIPLE_PLUS_PAIR
-                    || m.getType() == CardType.FOUR_PLUS_TWO
-                    || m.getType() == CardType.FOUR_PLUS_TWO_PAIRS) {
-                combos.add(m);
-            }
-        }
-        combos.sort(Comparator.comparingInt(Move::getMainRank));
-        int takeCombos = Math.min(4, combos.size());
-        for (int i = 0; i < takeCombos; i++) {
-            if (!selected.contains(combos.get(i))) {
-                selected.add(combos.get(i));
-            }
-        }
-
-        // 4. 普通非炸弹
-        List<Move> normals = new ArrayList<>();
-        for (Move m : pool) {
-            if (!m.isBomb() && !m.isPass() && !selected.contains(m)) {
+                passes.add(m);
+            } else if (m.getCardCount() == handCardCount) {
+                clears.add(m);
+            } else if (BombPolicy.isBomb(m)) {
+                bombs.add(m);
+            } else if (isStructureMove(m)) {
+                structures.add(m);
+            } else {
                 normals.add(m);
             }
         }
+
+        structures.sort(Comparator.comparingInt(Move::getMainRank));
         normals.sort(Comparator.comparingInt(Move::getMainRank));
-        int takeNormals = Math.min(6, normals.size());
-        for (int i = 0; i < takeNormals; i++) {
-            selected.add(normals.get(i));
-        }
+        bombs.sort(Comparator.comparingInt(Move::getMainRank));
+        clears.sort(Comparator.comparingInt(Move::getMainRank));
 
-        // 5. 紧急时保留炸弹
+        List<Move> ordered = new ArrayList<>(pool.size());
+        addUnique(ordered, clears);
+        addUnique(ordered, passes);
+        addUnique(ordered, structures);
+        addUnique(ordered, normals);
         if (keepBombs) {
-            List<Move> bombs = new ArrayList<>();
-            for (Move m : pool) {
-                if (m.isBomb() && !selected.contains(m)) {
-                    bombs.add(m);
-                }
-            }
-            bombs.sort(Comparator.comparingInt(Move::getMainRank));
-            int takeBombs = Math.min(2, bombs.size());
-            for (int i = 0; i < takeBombs; i++) {
-                selected.add(bombs.get(i));
+            addUnique(ordered, bombs);
+        }
+        for (Move m : pool) {
+            if (!ordered.contains(m)) {
+                ordered.add(m);
             }
         }
+        return ordered;
+    }
 
-        return selected.isEmpty() ? pool : selected;
+    private static void addUnique(List<Move> ordered, List<Move> batch) {
+        for (Move m : batch) {
+            if (!ordered.contains(m)) {
+                ordered.add(m);
+            }
+        }
+    }
+
+    private static boolean isStructureMove(Move m) {
+        return m.getType() == CardType.STRAIGHT
+                || m.getType() == CardType.CONSECUTIVE_PAIRS
+                || m.getType() == CardType.AIRPLANE
+                || m.getType() == CardType.AIRPLANE_PLUS_SINGLES
+                || m.getType() == CardType.AIRPLANE_PLUS_PAIRS
+                || m.getType() == CardType.TRIPLE_PLUS_ONE
+                || m.getType() == CardType.TRIPLE_PLUS_PAIR
+                || m.getType() == CardType.FOUR_PLUS_TWO
+                || m.getType() == CardType.FOUR_PLUS_TWO_PAIRS;
     }
 }
