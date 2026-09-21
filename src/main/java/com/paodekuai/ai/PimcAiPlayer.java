@@ -36,7 +36,7 @@ public class PimcAiPlayer {
 
     public PimcAiPlayer() {
         // 与斗地主端对齐的默认算力：更多假想世界 + 更深 MCTS
-        this(200, 1500);
+        this(240, 1600);
     }
 
     /**
