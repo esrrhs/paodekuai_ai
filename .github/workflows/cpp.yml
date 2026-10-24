@@ -1,0 +1,27 @@
+name: C++ CI
+
+on: [push]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install zlib (Ubuntu)
+      if: runner.os == 'Linux'
+      run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
+    - name: Configure
+      working-directory: cpp
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+    - name: Build
+      working-directory: cpp
+      run: cmake --build build -j
+    - name: Test (parity against data/golden)
+      working-directory: cpp
+      run: ctest --test-dir build --output-on-failure

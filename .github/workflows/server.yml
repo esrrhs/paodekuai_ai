@@ -1,0 +1,75 @@
+name: Server CI
+
+on: [push]
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+    - uses: actions/checkout@v4
+
+    # 服务端 = Lua 业务 + C++ 宿主 + fakelua 运行时, 所以要把 fakelua 一起编出来
+    - name: Checkout fakelua
+      uses: actions/checkout@v4
+      with:
+        repository: esrrhs/fakelua
+        path: fakelua
+
+    - name: Setup ccache
+      uses: hendrikmuhs/ccache-action@v1.2
+      with:
+        key: ${{ runner.os }}-fakelua-release
+        max-size: 2G
+
+    - name: Cache CPM dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/CPM
+        key: cpm-${{ runner.os }}-${{ hashFiles('fakelua/**/CMakeLists.txt', 'fakelua/cmake/*.cmake') }}
+        restore-keys: |
+          cpm-${{ runner.os }}-
+
+    - name: Setup system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build pkg-config \
+          libssl-dev libevent-dev zlib1g-dev libboost-all-dev
+
+    - name: Configure fakelua
+      working-directory: fakelua
+      run: |
+        cmake -S . -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DFAKELUA_BUILD_TESTS=OFF \
+          -DFAKELUA_BUILD_BENCHMARKS=OFF
+
+    # 宿主只链 libfakelua, 但 install 规则里包含 flua, 所以两个都要编出来
+    - name: Build fakelua
+      working-directory: fakelua
+      run: cmake --build build --target fakelua flua
+
+    - name: Install fakelua
+      working-directory: fakelua
+      run: sudo cmake --install build --prefix /usr/local
+
+    - name: Build host
+      working-directory: server
+      run: |
+        cmake -S host -B host/build -DCMAKE_BUILD_TYPE=Release -DFAKELUA_PREFIX=/usr/local
+        cmake --build host/build -j
+
+    # 一次性跑 init: 权重 + 一整局自对弈 + 会话层与编码契约
+    - name: Self check (init only, one shot)
+      working-directory: server
+      env:
+        PAODEKUAI_SMOKE: "1"
+      run: ./host/build/paodekuai_server lua --once
+
+    # 起真服务打 HTTP 接口, 契约与旧 Java 版一致
+    - name: HTTP API tests
+      run: python3 server/tests/api_test.py --server "$GITHUB_WORKSPACE/server/host/build/paodekuai_server"

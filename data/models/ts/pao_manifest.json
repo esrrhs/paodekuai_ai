@@ -1,0 +1,113 @@
+{
+  "byteOrder": "little",
+  "dtype": "float32",
+  "gateOrder": "LSTM weight chunks are ordered i (input gate), f (forget gate), g (cell candidate), o (output gate)",
+  "parameters": [
+    {
+      "entry": 0,
+      "name": "lstm.weight_ih_l0",
+      "shape": [
+        512,
+        429
+      ]
+    },
+    {
+      "entry": 1,
+      "name": "lstm.weight_hh_l0",
+      "shape": [
+        512,
+        128
+      ]
+    },
+    {
+      "entry": 2,
+      "name": "lstm.bias_ih_l0",
+      "shape": [
+        512
+      ]
+    },
+    {
+      "entry": 3,
+      "name": "lstm.bias_hh_l0",
+      "shape": [
+        512
+      ]
+    },
+    {
+      "entry": 4,
+      "name": "l1.weight",
+      "shape": [
+        256,
+        1465
+      ]
+    },
+    {
+      "entry": 5,
+      "name": "l1.bias",
+      "shape": [
+        256
+      ]
+    },
+    {
+      "entry": 6,
+      "name": "l2.weight",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    {
+      "entry": 7,
+      "name": "l2.bias",
+      "shape": [
+        256
+      ]
+    },
+    {
+      "entry": 8,
+      "name": "l3.weight",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    {
+      "entry": 9,
+      "name": "l3.bias",
+      "shape": [
+        256
+      ]
+    },
+    {
+      "entry": 10,
+      "name": "l4.weight",
+      "shape": [
+        512,
+        256
+      ]
+    },
+    {
+      "entry": 11,
+      "name": "l4.bias",
+      "shape": [
+        512
+      ]
+    },
+    {
+      "entry": 12,
+      "name": "head.weight",
+      "shape": [
+        1,
+        512
+      ]
+    },
+    {
+      "entry": 13,
+      "name": "head.bias",
+      "shape": [
+        1
+      ]
+    }
+  ],
+  "root": "pao_ts"
+}
