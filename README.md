@@ -1,104 +1,245 @@
-# 跑得快 AI (PaoDeKuai AI)
+# Pao De Kuai AI (paodekuai_ai)
 
 [![License](https://img.shields.io/github/license/esrrhs/paodekuai_ai)](https://github.com/esrrhs/paodekuai_ai)
-[![Language](https://img.shields.io/github/languages/top/esrrhs/paodekuai_ai)](https://github.com/esrrhs/paodekuai_ai)
 [![Maven Central](https://img.shields.io/maven-central/v/com.github.esrrhs/paodekuai-ai)](https://central.sonatype.com/artifact/com.github.esrrhs/paodekuai-ai)
-[![Build Status](https://github.com/esrrhs/paodekuai_ai/actions/workflows/maven.yml/badge.svg?branch=master)](https://github.com/esrrhs/paodekuai_ai/actions)
+[![Java CI](https://github.com/esrrhs/paodekuai_ai/actions/workflows/maven.yml/badge.svg?branch=master)](https://github.com/esrrhs/paodekuai_ai/actions/workflows/maven.yml)
+[![Go CI](https://github.com/esrrhs/paodekuai_ai/actions/workflows/go.yml/badge.svg?branch=master)](https://github.com/esrrhs/paodekuai_ai/actions/workflows/go.yml)
+[![C++ CI](https://github.com/esrrhs/paodekuai_ai/actions/workflows/cpp.yml/badge.svg?branch=master)](https://github.com/esrrhs/paodekuai_ai/actions/workflows/cpp.yml)
+[![Server CI](https://github.com/esrrhs/paodekuai_ai/actions/workflows/server.yml/badge.svg?branch=master)](https://github.com/esrrhs/paodekuai_ai/actions/workflows/server.yml)
 
-基于 **Java 17** 实现的高性能扑克牌游戏“**跑得快**”人工智能引擎与本地网页端对战平台。
+*中文版: [README_CN.md](README_CN.md)*
 
-核心算法采用**完美信息蒙特卡洛 (PIMC, Perfect Information Monte Carlo)** 结合 **Max^N 蒙特卡洛树搜索 (MCTS)**，针对跑得快这一典型不完全信息博弈实现严谨且强力的出牌决策。
+Three independent implementations of a Pao De Kuai (Run Fast, 跑得快) AI engine
+(Java 17 / Go 1.21 / C++20) plus a **playable web client** built on
+[FakeLua](https://github.com/esrrhs/fakelua). Card play is driven by a
+reinforcement-learning policy network trained with
+[PerfectPaoCPP](https://github.com/esrrhs/PerfectPaoCPP) (PerfectDou-style
+self-play PPO; weights checked into this repo). All three languages share one
+set of weights and one golden fixture and agree on the logits and the chosen
+move across 549 real decisions.
 
 ---
 
-## 📦 依赖引入 (Installation)
+## 📂 Layout
 
-### Maven
-在项目的 `pom.xml` 中添加依赖：
+```text
+paodekuai_ai/
+├── java/            # Java 17, Maven coordinate com.github.esrrhs:paodekuai-ai
+│   └── src/main/java/com/paodekuai/{model,rules,game,ai,nn}/  + Main.java (3-AI self-play demo)
+├── go/              # Go 1.21, zero third-party deps (hand-written forward pass, no cgo/ONNX)
+├── cpp/             # C++20, zero third-party deps (own zip parsing + hand-written forward pass)
+├── server/          # web platform: Lua business logic + C++ host + frontend
+│   ├── lua/  host/  static/  tests/  API.md  README.md
+├── data/
+│   ├── models/latest/   # raw training output (parameters only, no forward)
+│   ├── models/ts/       # runnable TorchScript weights + per-layer manifest (shared, 3.7 MB)
+│   └── golden/          # per-decision fixture exported from the training side (shared)
+└── tools/           # weight re-export and fixture generation (not part of runtime)
+```
+
+Rules, game state machine and feature encoding are implemented separately in
+each language; only the **weights** and the **golden fixture** are shared.
+
+---
+
+## 🎯 What "parity" means here
+
+Parity is a contract written into the tests, not a vibe. The fixture
+`data/golden/golden24.txt.gz` holds 24 games and 549 decisions dumped from the
+training side by `tools/pddump.cpp`:
+
+| Checked | Requirement |
+|---|---|
+| Candidate set | identical to the training side (compared as 13-rank multisets, including every concrete plane-wing combination) |
+| `xImp` / `seq` / action features | **bit-identical**, no tolerance |
+| logits | max absolute deviation < 1e-3 |
+| argmax move | must match exactly |
+
+Measured by each language's own test run:
+
+| Implementation | Max logit deviation | argmax mismatches |
+|---|---|---|
+| Java (libtorch via DJL) | 9.155e-5 | 0 |
+| Go (hand-written forward) | 1.678e-4 | 0 |
+| C++ (hand-written forward) | 1.526e-4 | 0 |
+
+The residual comes only from floating-point summation order, so the C++ build
+forces `-ffp-contract=off` and the tolerance has never been loosened.
+`server/` reuses the C++ engine, so the served moves are bit-identical to
+`cpp/`.
+
+---
+
+## 🚀 Using each implementation
+
+### Java
+
+```bash
+cd java
+./mvnw clean test                    # includes bit-level parity with the training side
+./mvnw exec:java                     # command-line demo: three AIs play one game
+./mvnw exec:java -Dexec.args="--model-dir=/path/to/weights --games 10"
+```
+
 ```xml
 <dependency>
     <groupId>com.github.esrrhs</groupId>
     <artifactId>paodekuai-ai</artifactId>
-    <version>1.0.1</version>
+    <version>2.0.0</version>
 </dependency>
 ```
 
-### Gradle
-```groovy
-implementation 'com.github.esrrhs:paodekuai-ai:1.0.1'
+The rules engine (`model` / `rules` / `game`) has no dependencies. The play AI
+needs native libtorch, and the DJL dependencies are marked `optional` in the
+pom — they do **not** propagate to consumers — so using `NeuralAiPlayer` means
+adding the engine and your platform's native library yourself:
+
+```xml
+<dependency>
+    <groupId>ai.djl.pytorch</groupId>
+    <artifactId>pytorch-engine</artifactId>
+    <version>0.39.0</version>
+</dependency>
+<!-- pin the native library explicitly, otherwise DJL downloads it into ~/.djl.ai on first use -->
+<dependency>
+    <groupId>ai.djl.pytorch</groupId>
+    <artifactId>pytorch-native-cpu</artifactId>
+    <classifier>osx-aarch64</classifier>
+    <version>2.7.1</version>
+    <scope>runtime</scope>
+</dependency>
+<dependency>
+    <groupId>ai.djl.pytorch</groupId>
+    <artifactId>pytorch-jni</artifactId>
+    <version>2.7.1-0.39.0</version>
+    <scope>runtime</scope>
+</dependency>
+```
+
+Weights must be exported with the same libtorch major version that loads them
+(this project is pinned to **2.7.1**, the newest native library in DJL 0.39).
+
+### Go
+
+```bash
+cd go && go test ./...      # zero third-party dependencies
+```
+
+The package is `github.com/esrrhs/paodekuai_ai/go`; `Load()` reads the shared
+`data/models/ts` weights, `Decide` returns the chosen move plus every
+candidate's logit. See the package tests for a full game replay.
+
+### C++
+
+```bash
+cd cpp
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+ctest --test-dir build --output-on-failure
+```
+
+```cpp
+#include <cstdio>
+
+#include "paodekuai/api.h"
+
+int main()
+{
+    paodekuai::Policy policy;
+    if (!policy.Load(paodekuai::Policy::DefaultModelDir()))
+    {
+        std::fprintf(stderr, "%s\n", policy.Error().c_str());
+        return 1;
+    }
+    std::array<paodekuai::CardSet, 3> hands{
+        paodekuai::CardSet::parse("33445566778899TTJQKA"),
+        paodekuai::CardSet::parse("34556778899TTJQKA2"),
+        paodekuai::CardSet::parse("3344666778899TKKQA")};
+    paodekuai::GameState state;
+    state.hand = hands;
+    state.turn = 0;
+    state.lastPlayer = 0;
+    const auto d = policy.Decide(state.getPublicView(state.turn));
+    std::printf("%s (%d candidates)\n", d.move.str().c_str(),
+                static_cast<int>(d.options.size()));
+    return 0;
+}
 ```
 
 ---
 
-## 🌟 核心特性
+## 🌐 Web platform (FakeLua)
 
-### 1. PIMC + Max^N MCTS 决策算法
-- **不完全信息隐藏与确定化采样 (Determinization)**：玩家视角严格受限，仅感知自身手牌、对手剩余牌数与出牌历史。AI 决策时通过未知牌池采样生成多个完全信息假想世界分别推演。
-- **标准的 Max^N MCTS 四阶段**：
-  - **Selection (选择)**：基于多人博弈 UCB1 公式在搜索树中下潜；
-  - **Expansion (扩展)**：对未探索动作建树；
-  - **Simulation / Rollout (快速推演)**：使用轻量启发式规则快速模拟至终局；
-  - **Backpropagation (反向传播)**：三方胜负收益向量沿树回传更新。
-- **多世界聚合评估**：跨采样世界汇总各合法出牌动作的访问频次与胜率期望，选取最优稳健着法。
+One human (seat 0) versus two policy-network AIs: first-lead designation, move
+hints, an AI reasoning panel, a card counter, a game log, and per-session
+isolation.
 
-### 2. 网页端交互对战平台 (1 真人 vs 2 AI)
-- **仿真绿色扑克桌**：实时渲染手牌、出牌气泡、剩余牌量与出牌倒计时/轮次指示。
-- **💡 AI 智能提示**：遇到疑难牌局时，一键获取 PIMC AI 的推荐着法并自动高亮手牌。
-- **🔍 实时 AI 思考雷达**：可视化展示 AI 在各可能世界采样中的候选动作分布、访问量与预估胜率柱状图。
-- **📊 记牌器与对局日志**：实时统计全场剩余牌张分布（3 ~ 2）并记录完整出牌历史。
+```bash
+cd server
+cmake -S host -B host/build -DCMAKE_BUILD_TYPE=Release   # needs fakelua installed, see server/README.md
+cmake --build host/build -j
+PAODEKUAI_PORT=8080 ./host/build/paodekuai_server lua     # http://localhost:8080
+python3 tests/api_test.py                                 # HTTP contract cases
+```
 
-### 3. 规范的跑得快规则引擎
-- 支持三人 48 张标准玩法（每人 16 张，无大小王，去 3 张 2 和 1 张 A）。
-- 完整支持所有常见牌型：单张、对子、三张、三带一、三带二、顺子、连对、飞机（不带/带单/带对）、四带二、炸弹。
-- 严格遵循跑得快“能管必管”规则（有牌能压时不可过牌）。
+Rules and inference stay in C++; Lua only handles HTTP, sessions and flow.
+The contract is documented in [server/API.md](server/API.md).
 
 ---
 
-## 🚀 快速开始
+## 🧠 Weights and re-export
 
-### 环境依赖
-- JDK 17+
-- Apache Maven 3.5+
+`data/models/latest` is what the training machine writes through a libtorch
+`OutputArchive` (PerfectPaoCPP `torch_nn::ActorImpl::save`): **parameters
+only, no forward**, so no TorchScript runtime can call it directly. It has to
+be rebuilt:
 
-### 1. 启动网页端对战平台 (推荐)
-执行以下命令启动本地 Web 服务：
 ```bash
-mvn exec:java
-```
-服务启动后，在浏览器中访问：
-👉 **http://localhost:8080**
-
-*(如需指定端口，可执行：`mvn exec:java -Dexec.args="--port=8088"`)*
-
-### 2. 运行命令行 AI 对局模拟 (Benchmark)
-若需在终端中查看 3 个 AI 纯自动对局的深度思考过程与结算：
-```bash
-mvn exec:java -Dexec.args="--cli"
+# 1) extract the parameters with the same PyTorch version the training side used
+python3 tools/export_actor.py extract --in data/models/latest --out /tmp/params
+# 2) rebuild and script with the version that matches the native library (2.7.1 here)
+python3 tools/export_actor.py script --in /tmp/params --out data/models/ts
 ```
 
-### 3. 运行自动化单元测试
-```bash
-mvn clean test
-```
+`export_actor.py` also writes `pao_manifest.json`. A TorchScript zip stores
+tensors as **STORED (uncompressed)** entries, so the manifest maps
+"entry index → layer → shape" and Go/C++ can load the weights with nothing but
+a standard-library zip reader. The fixture comes from `tools/pddump.cpp`.
+Steps, record format and the traps (the LSTM gate chunks are ordered
+**i, f, g, o**; getting it wrong produces deviations in the thousands) are in
+[tools/README.md](tools/README.md).
 
 ---
 
-## 📂 项目结构
+## 🃏 Rules
 
-```text
-paodekuai_ai/
-├── pom.xml                                   # Maven 配置 (Java 17, JUnit 5, AssertJ, Jackson, Logback)
-├── src/
-│   ├── main/
-│   │   ├── java/com/paodekuai/
-│   │   │   ├── model/                        # 领域模型 (Rank, CardType, Move, Hand)
-│   │   │   ├── rules/                        # 规则与牌库 (Deck, MoveGenerator)
-│   │   │   ├── game/                         # 牌局状态机与信息视角 (GameState, Player, PublicView)
-│   │   │   ├── ai/                           # PIMC 与 MCTS 核心 (Determinizer, MctsSearcher, PimcAiPlayer)
-│   │   │   ├── web/                          # Web 会话与 HTTP 服务 (GameSession, GameHttpServer)
-│   │   │   └── Main.java                     # 统一启动入口
-│   │   └── resources/
-│   │       ├── logback.xml                   # 日志配置
-│   │       └── static/                       # Web 前端资源 (index.html, style.css, app.js)
-│   └── test/                                 # 单元测试 (MoveGeneratorTest, PimcAITest)
-```
+48 suit-less cards (3..K ×4, A ×3, 2 ×1); three symmetric players hold 16
+cards each, no kitty. One of the four 3s is designated at random and its
+holder leads; the first hand must contain a 3. Supported shapes: single, pair,
+triple, triple-plus-two loose kickers, straight (5+), pair chain (2+), bare
+triple chain (2+), airplane with solo or pair wings, bomb. No jokers, no
+rocket, no four-plus-two. **Must-beat**: when following, pass is legal only if
+nothing beats the table (bombs included). **Report-single**: when leading a
+solo while the next player holds exactly one card, the lead must top with the
+largest solo. One player emptying their hand ends the game; the winner collects
+the losers' remaining-card counts (doubled for a 16-card shutdown).
+
+The policy network sees public information only (own hand, the combined
+unknown cards of the other two, what each player has played and each player's
+last move, the last 15 moves, relative-seat hand counts, bomb count, report
+flags) and **never reads another player's private hand**. The numbers in the
+UI are softmax **policy probabilities** (model preference), not search win
+rates.
+
+---
+
+## 📝 Notes on the previous engine
+
+The original play engine was **PIMC sampling plus a Max^N MCTS search** with
+hand-shape heuristics, pass inference and bomb-policy guardrails. The policy
+network replaces the whole search chain (`PimcAiPlayer`, `MctsSearcher`,
+`Determinizer`, `FastRolloutPolicy`, `BombPolicy`, `PassInference`) the same
+way [doudizhu_ai](https://github.com/esrrhs/doudizhu_ai) replaced its own
+search engine, and the web client moved from an embedded Java server to
+`server/` (FakeLua + C++ host). Everything before the 2.0.0 rewrite still
+contains that implementation.

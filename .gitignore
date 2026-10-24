@@ -1,5 +1,9 @@
 /build/
 /bin/
 /target/
+java/target/
+cpp/build/
+server/host/build/
+go/coverage*
 *.log
 Result.txt

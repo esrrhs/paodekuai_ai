@@ -16,4 +16,5 @@ jobs:
         distribution: 'temurin'
         cache: 'maven'
     - name: Build with Maven Wrapper
+      working-directory: java
       run: ./mvnw -B test package
