@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>跑得快 AI 对战平台 (策略网络版)</title>
+    <title>跑得快 AI 对战平台 (强化学习策略网络)</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -11,12 +11,14 @@
         <!-- 顶部导航 -->
         <header class="header">
             <div class="logo">
-                <span class="logo-icon">♠️</span>
-                <h1>跑得快 AI 对战室 <span class="badge">策略网络推理</span></h1>
+                <span class="logo-icon">🂱</span>
+                <h1>跑得快 AI 对战室 <span class="badge">强化学习策略网络 (PerfectPao)</span></h1>
             </div>
             <div class="header-actions">
-                <button id="btn-rules" class="btn btn-secondary">📖 游戏规则</button>
-                <button id="btn-new-game" class="btn btn-secondary">🔄 重开新局</button>
+                <button id="btn-rules" class="btn btn-secondary">📖 规则与算法</button>
+                <div class="new-game-group">
+                    <button id="btn-new-game" class="btn btn-gold">🎲 重新发牌</button>
+                </div>
             </div>
         </header>
 
@@ -24,84 +26,111 @@
         <main class="main-content">
             <!-- 牌桌区 -->
             <section class="table-container">
-                <div class="poker-table">
-                    <!-- 上方两名 AI 玩家 -->
-                    <div class="opponents-row">
-                        <!-- AI 玩家 2 区域 (上家) -->
-                        <div class="player-unit left-unit">
-                            <div id="player-2" class="player-box ai-player">
-                                <div class="player-avatar">🧠</div>
-                                <div class="player-info">
-                                    <div class="player-name">AI 玩家 2 (P2 · 上家)</div>
-                                    <div class="card-count"><span id="p2-card-count">16</span> 张手牌</div>
+                <div class="table-outer-wrapper">
+                    <!-- 左侧 P2 思考气泡面板 (牌桌外侧) -->
+                    <div id="p2-thought-popover" class="ai-thought-popover left-popover hidden">
+                        <div class="popover-header">
+                            <span class="popover-title">🧠 P2 思考</span>
+                            <span id="p2-popover-time" class="popover-time">0 ms</span>
+                        </div>
+                        <div id="p2-popover-body" class="popover-body"></div>
+                    </div>
+
+                    <!-- 跑得快核心牌桌 -->
+                    <div class="poker-table">
+                        <!-- 上方两名 AI 玩家 -->
+                        <div class="opponents-row">
+                            <!-- AI 玩家 2 区域 (上家) -->
+                            <div class="player-unit left-unit">
+                                <div id="player-2" class="player-box ai-player">
+                                    <div class="player-avatar-box">
+                                        <div class="player-avatar" id="p2-avatar">🧑‍🌾</div>
+                                        <span class="avatar-mood-badge hidden" id="p2-mood"></span>
+                                        <div class="mood-speech-bubble hidden" id="p2-speech"></div>
+                                    </div>
+                                    <div class="player-info">
+                                        <div class="player-name">AI 玩家 2 (P2 · 上家) <span class="role-badge">各自为战</span></div>
+                                        <div class="card-count"><span id="p2-card-count">16</span> 张手牌</div>
+                                    </div>
+                                    <div id="p2-status" class="player-status">等待中</div>
                                 </div>
-                                <div id="p2-status" class="player-status">等待中</div>
+                                <!-- P2 面前出牌/过牌展示区 -->
+                                <div id="p2-action-area" class="player-action-display"></div>
                             </div>
-                            <!-- P2 面前出牌/过牌展示区 -->
-                            <div id="p2-action-area" class="player-action-display"></div>
+
+                            <!-- 桌面中央公共状态 -->
+                            <div class="center-trick-area">
+                                <div class="bottom-cards-wrapper">
+                                    <div class="bottom-cards-label" id="table-cards-label">桌面牌 (自由出牌)</div>
+                                    <div id="table-cards-container" class="bottom-cards-display"></div>
+                                </div>
+                                <div class="trick-status-badge" id="trick-status-text">等待开局</div>
+                            </div>
+
+                            <!-- AI 玩家 1 区域 (下家) -->
+                            <div class="player-unit right-unit">
+                                <div id="player-1" class="player-box ai-player">
+                                    <div class="player-avatar-box">
+                                        <div class="player-avatar" id="p1-avatar">🧑‍🌾</div>
+                                        <span class="avatar-mood-badge hidden" id="p1-mood"></span>
+                                        <div class="mood-speech-bubble hidden" id="p1-speech"></div>
+                                    </div>
+                                    <div class="player-info">
+                                        <div class="player-name">AI 玩家 1 (P1 · 下家) <span class="role-badge">各自为战</span></div>
+                                        <div class="card-count"><span id="p1-card-count">16</span> 张手牌</div>
+                                    </div>
+                                    <div id="p1-status" class="player-status">等待中</div>
+                                </div>
+                                <!-- P1 面前出牌/过牌展示区 -->
+                                <div id="p1-action-area" class="player-action-display"></div>
+                            </div>
                         </div>
 
-                        <!-- AI 玩家 1 区域 (下家) -->
-                        <div class="player-unit right-unit">
-                            <div id="player-1" class="player-box ai-player">
-                                <div class="player-avatar">🤖</div>
-                                <div class="player-info">
-                                    <div class="player-name">AI 玩家 1 (P1 · 下家)</div>
-                                    <div class="card-count"><span id="p1-card-count">16</span> 张手牌</div>
+                        <!-- 底部人类玩家区 -->
+                        <div class="human-section">
+                            <!-- P0 (真人) 面前出牌/过牌展示区 -->
+                            <div id="p0-action-area" class="player-action-display human-action-display"></div>
+
+                            <!-- 操作提示与控制按钮 -->
+                            <div class="human-controls">
+                                <div class="turn-indicator" id="turn-indicator">正在初始化...</div>
+
+                                <!-- 出牌控制区 -->
+                                <div id="playing-controls" class="action-buttons">
+                                    <button id="btn-play" class="btn btn-primary" disabled>出 牌</button>
+                                    <button id="btn-hint" class="btn btn-info">💡 AI 提示</button>
+                                    <button id="btn-pass" class="btn btn-warning" disabled>不出 (PASS)</button>
                                 </div>
-                                <div id="p1-status" class="player-status">等待中</div>
                             </div>
-                            <!-- P1 面前出牌/过牌展示区 -->
-                            <div id="p1-action-area" class="player-action-display"></div>
+
+                            <!-- 人类手牌展示 -->
+                            <div class="human-player-box">
+                                <div class="human-info">
+                                    <span class="human-avatar" id="p0-avatar">👤</span>
+                                    <strong>你 (玩家 P0)</strong>
+                                    <span class="hand-count">(剩余 <span id="p0-card-count">16</span> 张)</span>
+                                </div>
+                                <div id="human-hand" class="hand-cards-display"></div>
+                            </div>
                         </div>
                     </div>
 
-                    <!-- 桌面中央状态提示区 -->
-                    <div class="center-trick-area">
-                        <div class="trick-status-badge" id="trick-status-text">自由出牌</div>
-                    </div>
-
-                    <!-- 底部人类玩家区 -->
-                    <div class="human-section">
-                        <!-- P0 (真人) 面前出牌/过牌展示区 -->
-                        <div id="p0-action-area" class="player-action-display human-action-display"></div>
-
-                        <!-- 操作提示与控制按钮 -->
-                        <div class="human-controls">
-                            <div class="turn-indicator" id="turn-indicator">轮到你出牌</div>
-                            <div class="action-buttons">
-                                <button id="btn-play" class="btn btn-primary" disabled>出 牌</button>
-                                <button id="btn-hint" class="btn btn-info">💡 AI 提示</button>
-                                <button id="btn-pass" class="btn btn-warning" disabled>不出 (PASS)</button>
-                            </div>
+                    <!-- 右侧 P1 思考气泡面板 (牌桌外侧) -->
+                    <div id="p1-thought-popover" class="ai-thought-popover right-popover hidden">
+                        <div class="popover-header">
+                            <span class="popover-title">🤖 P1 思考</span>
+                            <span id="p1-popover-time" class="popover-time">0 ms</span>
                         </div>
-
-                        <!-- 人类手牌展示 -->
-                        <div class="human-player-box">
-                            <div class="human-info">
-                                <span class="human-avatar">👤</span>
-                                <strong>你 (玩家 P0)</strong>
-                                <span class="hand-count">(剩余 <span id="p0-card-count">16</span> 张)</span>
-                            </div>
-                            <div id="human-hand" class="hand-cards-display"></div>
-                        </div>
+                        <div id="p1-popover-body" class="popover-body"></div>
                     </div>
                 </div>
             </section>
 
-            <!-- 右侧战术与 AI 思考分析面板 -->
+            <!-- 右侧战术面板 -->
             <aside class="sidebar">
-                <!-- 实时 AI 思考雷达 -->
-                <div class="panel ai-thought-panel">
-                    <h3>🔍 AI 思考雷达 (策略概率分析)</h3>
-                    <div id="ai-thought-content" class="ai-thought-content">
-                        <p class="placeholder-text">等待 AI 做出决策，将在此展示策略网络对各候选出牌的概率评估...</p>
-                    </div>
-                </div>
-
-                <!-- 记牌器面板 -->
+                <!-- 牌局记牌器面板 -->
                 <div class="panel card-counter-panel">
-                    <h3>📊 牌池记牌器 (已出牌统计)</h3>
+                    <h3>📊 牌池记牌器 (剩余各牌张统计)</h3>
                     <div id="card-counter" class="card-counter-grid"></div>
                 </div>
 
@@ -114,43 +143,60 @@
         </main>
     </div>
 
-    <!-- 游戏规则弹窗 -->
+    <!-- 游戏规则与算法弹窗 -->
     <div id="rules-modal" class="modal-overlay hidden">
         <div class="modal-content rules-modal-content">
             <div class="modal-header">
-                <h2>📖 跑得快游戏规则详解</h2>
+                <h2>📖 跑得快规则与 AI 算法说明</h2>
                 <button id="rules-close-icon" class="btn-close">&times;</button>
             </div>
             <div class="rules-body">
-                <section class="rule-sec">
-                    <h4>1. 牌数与人数</h4>
-                    <p>标准 3 人对局，总共 48 张扑克牌（无大小王，去掉 3 张 2 和 1 张 A，保留 1 张 2、3 张 A 以及 3~K 各 4 张）。每人发 16 张手牌。</p>
+                <section class="rule-sec highlight-sec">
+                    <h4>🃏 1. 湖南三人 16 张跑得快</h4>
+                    <p>48 张无花色牌 (3..K 各 4 张、A 3 张、2 只有 1 张)，三家各持 16 张、无底牌、
+                    <strong>各自为战</strong>：最先出完手牌者获胜。开局从场上 4 张 3 里随机指定一张，
+                    其持有者先出，且<strong>第一手必须包含 3</strong>。</p>
                 </section>
 
                 <section class="rule-sec highlight-sec">
-                    <h4>⚠️ 2. 核心规则：能管必管 / 有牌必压</h4>
-                    <p>这是正宗跑得快与斗地主的最大区别：<strong>当上家出牌后，若你手牌中存在能够大过上家的合法牌型，规则强制要求必须打出，不允许选择“不出 (PASS)”！</strong></p>
-                    <p>只有当你手中<strong>完全没有任何牌能够压制</strong>时，“不出 (PASS)”按钮才会解锁可用。这也是为什么有时 PASS 按钮为置灰状态的原因。</p>
+                    <h4>🧠 2. 神经网络出牌 (强化学习策略网络)</h4>
+                    <p>出牌由 <strong>PerfectPao</strong> 式自对弈强化学习训练出的策略网络驱动，
+                    三个座位共享一个网络 (观察特征按「自己 / 上家 / 下家」相对编码)：</p>
+                    <ul>
+                        <li>完整枚举当前所有合法走法（含飞机带翅的全部具体组合）；</li>
+                        <li>每个候选动作与局面特征一起送入网络打分，直接取最高分的走法；</li>
+                        <li>观察特征只用公开信息：我的手牌、两家合计的未知牌、各家已出与最近一手、最近 15 手历史、炸弹数与报单标志等，<strong>不读取任何人的私有手牌</strong>；</li>
+                        <li>「AI 思考」里的百分比是 softmax 归一化后的<strong>策略概率</strong>（模型对这手牌的偏好），不是搜索出来的胜率。</li>
+                    </ul>
+                </section>
+
+                <section class="rule-sec highlight-sec">
+                    <h4>🚧 3. 能管必管 (与斗地主最大的差异)</h4>
+                    <p>轮到你时，只要存在能压过桌面的出牌，<strong>就必须出其中一手，不允许过牌</strong>
+                    （炸弹也在必管集合里）。只有确实无牌可压时才能 PASS —— 所以「不出」按钮
+                    只有在真的要不起时才会亮起。</p>
                 </section>
 
                 <section class="rule-sec">
-                    <h4>3. 牌型与大小</h4>
+                    <h4>📣 4. 报单规则</h4>
+                    <p>任一家只剩最后 1 张牌即「报单」；此时其上家若想出<strong>单张</strong>，
+                    必须出手中<strong>最大的单张</strong>顶住，不能放走报单者。</p>
+                </section>
+
+                <section class="rule-sec">
+                    <h4>🀄 5. 牌型与大小</h4>
                     <ul>
-                        <li><strong>点数顺序</strong>：2 > A > K > Q > J > 10 > 9 > 8 > 7 > 6 > 5 > 4 > 3</li>
-                        <li><strong>单张</strong>：任意单张牌，比点数大小。</li>
-                        <li><strong>对子</strong>：两张点数相同的牌。</li>
-                        <li><strong>三张</strong>：三张同点数牌，可单出，也可三带一、三带二（可带一对或两张单牌）。</li>
-                        <li><strong>顺子</strong>：5 张或以上连续单牌（3 到 A，顺子不能包含 2）。</li>
-                        <li><strong>连对</strong>：2 对或以上连续对子（如 3344，最大到 AA）。</li>
-                        <li><strong>飞机</strong>：2 个或以上连续三张，可带单牌或对子。</li>
-                        <li><strong>炸弹</strong>：4 张同点数牌，能压除更大炸弹外的所有普通牌型。</li>
-                        <li><strong>四带二</strong>：4 张同点数带两张单牌或一对。</li>
+                        <li><strong>点数顺序</strong>：2 > A > K > Q > J > 10 > 9 > 8 > 7 > 6 > 5 > 4 > 3；2 不参与顺子/连对/三顺。</li>
+                        <li><strong>炸弹</strong>：4 张同点数牌，压制一切非炸弹牌型；炸弹之间比点数。A 只有 3 张所以不可能有 AAAA，2 只有一张。</li>
+                        <li><strong>普通牌型</strong>：单张、对子、三张、三带二（带一对或两单）、顺子（5 张起）、连对（2 对起）、三顺（2 组起）、飞机带单/带对。</li>
+                        <li><strong>比较规则</strong>：同类型同张数才能互压；无王炸、无四带二。</li>
                     </ul>
                 </section>
 
                 <section class="rule-sec">
-                    <h4>4. 胜负判定</h4>
-                    <p>各自为战，任何一位玩家率先出完手中的全部 16 张牌即刻获胜，牌局结束！</p>
+                    <h4>💰 6. 结算</h4>
+                    <p>最先出完手牌者获胜，按各家剩余张数计分：赢家收两家剩余张数之和，
+                    一张未出（全关）翻倍。零和结算。</p>
                 </section>
             </div>
             <div class="modal-footer">
@@ -164,9 +210,14 @@
         <div class="modal-content">
             <h2 id="modal-title">胜负揭晓</h2>
             <p id="modal-message"></p>
-            <button id="modal-btn-restart" class="btn btn-primary">再来一局</button>
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button id="modal-btn-restart" class="btn btn-gold">再来一局</button>
+            </div>
         </div>
     </div>
+
+    <!-- 轻量级 Tips 浮层通知 (替代原生 alert) -->
+    <div id="toast-container" class="toast-container"></div>
 
     <script src="app.js"></script>
 </body>
