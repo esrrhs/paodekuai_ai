@@ -32,28 +32,36 @@ else()
 endif()
 target_link_libraries(paodekuai PUBLIC Threads::Threads)
 
-find_package(GTest QUIET)
-find_package(ZLIB QUIET)
-if(GTest_FOUND)
-    set(GTEST_LIBRARIES GTest::gtest GTest::gtest_main)
-else()
-    include(FetchContent)
-    FetchContent_Declare(
-      googletest
-      URL https://github.com/google/googletest/archive/refs/tags/v1.15.2.tar.gz
-    )
-    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-    FetchContent_MakeAvailable(googletest)
-    set(GTEST_LIBRARIES gtest gtest_main)
+# server/ 宿主经由 add_subdirectory 引入本目录时会关掉测试,
+# 免得生产机上还要拉 googletest。
+if(NOT DEFINED PAODEKUAI_BUILD_TESTS)
+  set(PAODEKUAI_BUILD_TESTS ON)
 endif()
 
-add_executable(paodekuai_parity_test test/parity_test.cpp)
-target_include_directories(paodekuai_parity_test PRIVATE src test)
-target_link_libraries(paodekuai_parity_test PRIVATE paodekuai ${GTEST_LIBRARIES})
-if(ZLIB_FOUND)
-    target_compile_definitions(paodekuai_parity_test PRIVATE PAODEKUAI_HAVE_ZLIB=1)
-    target_link_libraries(paodekuai_parity_test PRIVATE ZLIB::ZLIB)
+if(PAODEKUAI_BUILD_TESTS)
+  find_package(GTest QUIET)
+  find_package(ZLIB QUIET)
+  if(GTest_FOUND)
+      set(GTEST_LIBRARIES GTest::gtest GTest::gtest_main)
+  else()
+      include(FetchContent)
+      FetchContent_Declare(
+        googletest
+        URL https://github.com/google/googletest/archive/refs/tags/v1.15.2.tar.gz
+      )
+      set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+      FetchContent_MakeAvailable(googletest)
+      set(GTEST_LIBRARIES gtest gtest_main)
+  endif()
+
+  add_executable(paodekuai_parity_test test/parity_test.cpp)
+  target_include_directories(paodekuai_parity_test PRIVATE src test)
+  target_link_libraries(paodekuai_parity_test PRIVATE paodekuai ${GTEST_LIBRARIES})
+  if(ZLIB_FOUND)
+      target_compile_definitions(paodekuai_parity_test PRIVATE PAODEKUAI_HAVE_ZLIB=1)
+      target_link_libraries(paodekuai_parity_test PRIVATE ZLIB::ZLIB)
+  endif()
+  # 测试工作目录固定为 cpp/, 这样 ResolveSharedData 能向上找到 ../data
+  enable_testing()
+  add_test(NAME parity COMMAND paodekuai_parity_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
-# 测试工作目录固定为 cpp/, 这样 ResolveSharedData 能向上找到 ../data
-enable_testing()
-add_test(NAME parity COMMAND paodekuai_parity_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
