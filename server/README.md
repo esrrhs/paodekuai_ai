@@ -47,3 +47,32 @@ python3 tests/api_test.py --base-url http://127.0.0.1:8080  # 打已运行的服
 ```
 
 契约见 [API.md](API.md)。
+
+## 生产部署 (gq.esrrhs.xyz)
+
+与 doudizhu/majiang 相同的模式:
+
+```bash
+# 1) 同步代码(生产机连不上 GitHub, 用 rsync 推过去)
+rsync -az --delete --exclude .git --exclude "cpp/build" --exclude "server/host/build" \
+    --exclude "java/target" --exclude ".github" \
+    ./ ubuntu@gq.esrrhs.xyz:project/paodekuai_ai/
+
+# 2) 远程构建 + 烟测
+ssh ubuntu@gq.esrrhs.xyz
+cd project/paodekuai_ai/server
+cmake -S host -B host/build -DCMAKE_BUILD_TYPE=Release -DFAKELUA_PREFIX=/usr/local
+cmake --build host/build -j
+PAODEKUAI_SMOKE=1 ./host/build/paodekuai_server lua --once
+
+# 3) systemd 常驻 (PAODEKUAI_PORT=8891, 已配 /etc/systemd/system/paodekuai.service)
+sudo systemctl enable --now paodekuai
+
+# 4) nginx: paodekuai.esrrhs.xyz 的 80/443 server 块 (webroot 签证书,
+#    443 反代 127.0.0.1:8891), 见 /etc/nginx/nginx.conf
+
+# 5) 证书续期由 certbot.timer 自动跑; certbot.service 已加 drop-in
+#    清掉 /etc/environment 里的代理变量
+```
+
+线上地址: <https://paodekuai.esrrhs.xyz>
