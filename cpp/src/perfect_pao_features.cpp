@@ -132,7 +132,6 @@ void encode(const PublicView &view, float *xImp, float *seq) {
 
 std::vector<LegalOption> legalOptions(const PublicView &view) {
     std::vector<LegalOption> out;
-    int seat = view.viewingPlayerId;
     int nxt = view.nextSeat();
 
     std::vector<CardSet> concrete;

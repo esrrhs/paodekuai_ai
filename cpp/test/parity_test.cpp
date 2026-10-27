@@ -3,6 +3,8 @@
 // (|Δ| < 1e-3, argmax must match) for every decision.
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
